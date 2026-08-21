@@ -29,9 +29,30 @@
 		6F9277E030382CC7007EA6E8 /* DogLensUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogLensUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6F927806303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/Models/DogLensImage.mlpackage,
+			);
+			target = 6F9277D530382CC7007EA6E8 /* DogLensTests */;
+		};
+		6F927807303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/Models/DogLensImage.mlpackage,
+			);
+			target = 6F9277DF30382CC7007EA6E8 /* DogLensUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6F9277C930382CC6007EA6E8 /* DogLens */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6F927806303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensTests" target */,
+				6F927807303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensUITests" target */,
+			);
 			path = DogLens;
 			sourceTree = "<group>";
 		};
