@@ -6,31 +6,69 @@ import CoreGraphics
 class ModelService {
     static let shared = ModelService()
 
-    // CoreML model — loaded on a background thread at startup
     private var model: DogLensImage?
-    private let modelQueue = DispatchQueue(label: "com.doglens.modelqueue", qos: .userInitiated)
+    private var modelTask: Task<DogLensImage, Error>?
+    private let modelLock = NSLock()
 
     private init() {
-        modelQueue.async {
+        startLoadingModel()
+    }
+
+    @discardableResult
+    private func startLoadingModel() -> Task<DogLensImage, Error> {
+        modelLock.lock()
+        defer { modelLock.unlock() }
+
+        if let existingTask = modelTask {
+            return existingTask
+        }
+
+        let task = Task.detached(priority: .userInitiated) { () -> DogLensImage in
             do {
                 let config = MLModelConfiguration()
-                config.computeUnits = .cpuAndNeuralEngine
-                self.model = try DogLensImage(configuration: config)
+                config.computeUnits = .all
+                return try DogLensImage(configuration: config)
             } catch {
-                print("Failed to load CoreML model: \(error)")
+                print("Failed to load CoreML model with .all, trying default config: \(error)")
+                let defaultConfig = MLModelConfiguration()
+                return try DogLensImage(configuration: defaultConfig)
             }
+        }
+
+        modelTask = task
+        return task
+    }
+
+    private func getModel() async throws -> DogLensImage {
+        modelLock.lock()
+        if let model = self.model {
+            modelLock.unlock()
+            return model
+        }
+        let task = modelTask ?? startLoadingModel()
+        modelLock.unlock()
+
+        do {
+            let loadedModel = try await task.value
+            modelLock.lock()
+            self.model = loadedModel
+            modelLock.unlock()
+            return loadedModel
+        } catch {
+            modelLock.lock()
+            self.modelTask = nil
+            modelLock.unlock()
+            throw NSError(domain: "ModelError", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to load CoreML model: \(error.localizedDescription)"])
         }
     }
 
     /// Run inference entirely off the main thread so CoreML can freely
-    /// dispatch to the Neural Engine without deadlocking on real devices.
+    /// dispatch without deadlocking on real devices.
     func detectDogs(in image: UIImage) async throws -> [DetectionResult] {
-        return try await Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self, let model = self.model else {
-                throw NSError(domain: "ModelError", code: -1,
-                              userInfo: [NSLocalizedDescriptionKey: "Model not loaded"])
-            }
+        let model = try await getModel()
 
+        return try await Task.detached(priority: .userInitiated) {
             // Use the thread-safe CoreGraphics-only pixel buffer conversion
             guard let pixelBuffer = image.pixelBufferOffMain(width: 416, height: 416) else {
                 throw NSError(domain: "ImageError", code: -1,
