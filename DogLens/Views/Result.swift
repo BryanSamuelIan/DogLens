@@ -1,44 +1,47 @@
 import SwiftUI
 import SwiftData
-import Photos
 
 struct ResultView: View {
     let image: UIImage
     let results: [DetectionResult]
-    
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var showingSaveAlert = false
-    @State private var saveMessage = ""
-    @State private var showOriginal = false
-    @State private var cachedAnnotatedImage: UIImage?
     @Query private var breeds: [DogBreed]
-    
+
+    @StateObject private var vm: ResultViewModel
+
+    init(image: UIImage, results: [DetectionResult]) {
+        self.image = image
+        self.results = results
+        _vm = StateObject(wrappedValue: ResultViewModel(image: image, results: results))
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // View Mode Selector
-                Picker("View Mode", selection: $showOriginal) {
+                // View Mode Picker
+                Picker("View Mode", selection: $vm.showOriginal) {
                     Text("Detection").tag(false)
                     Text("Original").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                
-                // Annotated Image
-                Image(uiImage: showOriginal ? image : (cachedAnnotatedImage ?? image))
+
+                // Image Display
+                Image(uiImage: vm.displayImage)
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: 400)
                     .cornerRadius(16)
                     .padding(.horizontal)
-                
-                // Details
+
+                // Detection Results
                 VStack(spacing: 16) {
                     Text("\(results.count) Dog(s) Detected")
                         .font(.title2)
                         .fontWeight(.bold)
-                    
+
                     ForEach(results) { result in
                         HStack {
                             Text(result.label)
@@ -54,10 +57,10 @@ struct ResultView: View {
                     }
                 }
                 .padding(.horizontal)
-                
+
                 // Actions
                 VStack(spacing: 16) {
-                    Button(action: saveToLibrary) {
+                    Button(action: vm.saveToPhotos) {
                         Text("Save to Photos")
                             .font(.headline)
                             .foregroundColor(.white)
@@ -66,8 +69,8 @@ struct ResultView: View {
                             .background(Color.blue)
                             .cornerRadius(16)
                     }
-                    
-                    Button(action: saveToSwiftData) {
+
+                    Button(action: vm.saveToBreedGallery) {
                         Text("Save to Breed Gallery")
                             .font(.headline)
                             .foregroundColor(.white)
@@ -76,12 +79,8 @@ struct ResultView: View {
                             .background(Color.orange)
                             .cornerRadius(16)
                     }
-                    
-                    Button(action: {
-                        // Go back to home by dismissing twice (or using a root binding)
-                        // For simplicity, just dismiss this view
-                        dismiss()
-                    }) {
+
+                    Button(action: { dismiss() }) {
                         Text("Scan Again")
                             .font(.subheadline)
                             .foregroundColor(.orange)
@@ -96,87 +95,16 @@ struct ResultView: View {
         .navigationTitle("Result")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if cachedAnnotatedImage == nil {
-                cachedAnnotatedImage = createAnnotatedUIImage()
-            }
+            vm.modelContext = modelContext
+            vm.breeds = breeds
         }
-        .alert(isPresented: $showingSaveAlert) {
-            Alert(title: Text("Save Result"), message: Text(saveMessage), dismissButton: .default(Text("OK")))
+        .onChange(of: breeds) { _, newBreeds in
+            vm.breeds = newBreeds
         }
-    }
-    
-    private func saveToLibrary() {
-        // Draw bounding boxes and save
-        let annotatedImage = cachedAnnotatedImage ?? createAnnotatedUIImage()
-        
-        PHPhotoLibrary.requestAuthorization { status in
-            if status == .authorized || status == .limited {
-                UIImageWriteToSavedPhotosAlbum(annotatedImage, nil, nil, nil)
-                DispatchQueue.main.async {
-                    saveMessage = "Image saved to your photos successfully."
-                    showingSaveAlert = true
-                }
-            } else {
-                DispatchQueue.main.async {
-                    saveMessage = "Please grant photo library access in settings."
-                    showingSaveAlert = true
-                }
-            }
+        .alert("Save Result", isPresented: $vm.showingSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(vm.saveMessage)
         }
-    }
-    
-    private func saveToSwiftData() {
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else { return }
-        let annotatedData = (cachedAnnotatedImage ?? createAnnotatedUIImage()).jpegData(compressionQuality: 0.8)
-        
-        for result in results {
-            // Find the breed in SwiftData
-            if let breed = breeds.first(where: { $0.name == result.label }) {
-                let breedImage = BreedImage(imageData: imageData, annotatedImageData: annotatedData, confidence: Double(result.confidence))
-                breed.images.append(breedImage)
-            }
-        }
-        
-        do {
-            try modelContext.save()
-            saveMessage = "Saved to Breed Gallery."
-            showingSaveAlert = true
-        } catch {
-            saveMessage = "Failed to save to gallery."
-            showingSaveAlert = true
-        }
-    }
-    
-    private func createAnnotatedUIImage() -> UIImage {
-        let size = image.size
-        UIGraphicsBeginImageContextWithOptions(size, false, image.scale)
-        image.draw(at: .zero)
-        
-        let context = UIGraphicsGetCurrentContext()!
-        let lineWidth = max(4.0, size.width / 150.0)
-        context.setLineWidth(lineWidth)
-        context.setStrokeColor(UIColor.orange.cgColor)
-        
-        for result in results {
-            context.stroke(result.boundingBox)
-            
-            // Draw text
-            let text = result.label
-            let fontSize = max(18.0, size.width / 40.0)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: fontSize),
-                .foregroundColor: UIColor.white,
-                .backgroundColor: UIColor.orange
-            ]
-            let textSize = text.size(withAttributes: attributes)
-            let textRect = CGRect(x: result.boundingBox.minX, y: max(0, result.boundingBox.minY - textSize.height), width: textSize.width, height: textSize.height)
-            text.draw(in: textRect, withAttributes: attributes)
-        }
-        
-        let annotatedImage = UIGraphicsGetImageFromCurrentImageContext()!
-        UIGraphicsEndImageContext()
-        return annotatedImage
     }
 }
-
-
