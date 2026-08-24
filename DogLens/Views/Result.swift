@@ -10,13 +10,25 @@ struct ResultView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingSaveAlert = false
     @State private var saveMessage = ""
+    @State private var showOriginal = false
+    @State private var cachedAnnotatedImage: UIImage?
     @Query private var breeds: [DogBreed]
     
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // View Mode Selector
+                Picker("View Mode", selection: $showOriginal) {
+                    Text("Detection").tag(false)
+                    Text("Original").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                
                 // Annotated Image
-                AnnotatedImage(image: image, results: results)
+                Image(uiImage: showOriginal ? image : (cachedAnnotatedImage ?? image))
+                    .resizable()
+                    .scaledToFit()
                     .frame(maxHeight: 400)
                     .cornerRadius(16)
                     .padding(.horizontal)
@@ -83,6 +95,11 @@ struct ResultView: View {
         }
         .navigationTitle("Result")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if cachedAnnotatedImage == nil {
+                cachedAnnotatedImage = createAnnotatedUIImage()
+            }
+        }
         .alert(isPresented: $showingSaveAlert) {
             Alert(title: Text("Save Result"), message: Text(saveMessage), dismissButton: .default(Text("OK")))
         }
@@ -90,7 +107,7 @@ struct ResultView: View {
     
     private func saveToLibrary() {
         // Draw bounding boxes and save
-        let annotatedImage = createAnnotatedUIImage()
+        let annotatedImage = cachedAnnotatedImage ?? createAnnotatedUIImage()
         
         PHPhotoLibrary.requestAuthorization { status in
             if status == .authorized || status == .limited {
@@ -110,11 +127,12 @@ struct ResultView: View {
     
     private func saveToSwiftData() {
         guard let imageData = image.jpegData(compressionQuality: 0.8) else { return }
+        let annotatedData = (cachedAnnotatedImage ?? createAnnotatedUIImage()).jpegData(compressionQuality: 0.8)
         
         for result in results {
             // Find the breed in SwiftData
             if let breed = breeds.first(where: { $0.name == result.label }) {
-                let breedImage = BreedImage(imageData: imageData, confidence: Double(result.confidence))
+                let breedImage = BreedImage(imageData: imageData, annotatedImageData: annotatedData, confidence: Double(result.confidence))
                 breed.images.append(breedImage)
             }
         }
@@ -135,7 +153,8 @@ struct ResultView: View {
         image.draw(at: .zero)
         
         let context = UIGraphicsGetCurrentContext()!
-        context.setLineWidth(5.0)
+        let lineWidth = max(4.0, size.width / 150.0)
+        context.setLineWidth(lineWidth)
         context.setStrokeColor(UIColor.orange.cgColor)
         
         for result in results {
@@ -143,8 +162,9 @@ struct ResultView: View {
             
             // Draw text
             let text = result.label
+            let fontSize = max(18.0, size.width / 40.0)
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 24),
+                .font: UIFont.boldSystemFont(ofSize: fontSize),
                 .foregroundColor: UIColor.white,
                 .backgroundColor: UIColor.orange
             ]
@@ -159,28 +179,4 @@ struct ResultView: View {
     }
 }
 
-struct AnnotatedImage: View {
-    let image: UIImage
-    let results: [DetectionResult]
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                
-                ForEach(results) { result in
-                    let scaleX = geometry.size.width / image.size.width
-                    let scaleY = geometry.size.height / image.size.height
-                    
-                    // The image might be letterboxed by scaledToFit. 
-                    // To do this perfectly in SwiftUI requires knowing the rendered rect.
-                    // For simplicity, we just assume the image fills the space (or is closely matched).
-                    // Actually, a better way is to display the annotated UIImage directly.
-                }
-            }
-        }
-    }
-}
+
