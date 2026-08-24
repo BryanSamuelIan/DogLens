@@ -11,11 +11,10 @@ class ModelService {
     private let modelLock = NSLock()
 
     private init() {
-        startLoadingModel()
+        _ = getOrStartModelTask()
     }
 
-    @discardableResult
-    private func startLoadingModel() -> Task<DogLensImage, Error> {
+    private func getOrStartModelTask() -> Task<DogLensImage, Error> {
         modelLock.lock()
         defer { modelLock.unlock() }
 
@@ -26,12 +25,13 @@ class ModelService {
         let task = Task.detached(priority: .userInitiated) { () -> DogLensImage in
             do {
                 let config = MLModelConfiguration()
-                config.computeUnits = .all
+                config.computeUnits = .cpuAndNeuralEngine
                 return try DogLensImage(configuration: config)
             } catch {
-                print("Failed to load CoreML model with .all, trying default config: \(error)")
-                let defaultConfig = MLModelConfiguration()
-                return try DogLensImage(configuration: defaultConfig)
+                print("Failed to load CoreML model with .cpuAndNeuralEngine, trying .cpuOnly: \(error)")
+                let cpuConfig = MLModelConfiguration()
+                cpuConfig.computeUnits = .cpuOnly
+                return try DogLensImage(configuration: cpuConfig)
             }
         }
 
@@ -45,8 +45,9 @@ class ModelService {
             modelLock.unlock()
             return model
         }
-        let task = modelTask ?? startLoadingModel()
         modelLock.unlock()
+
+        let task = getOrStartModelTask()
 
         do {
             let loadedModel = try await task.value
@@ -76,7 +77,7 @@ class ModelService {
             }
 
             let input = DogLensImageInput(image: pixelBuffer)
-            let output = try await model.prediction(input: input)
+            let output = try model.prediction(input: input)
 
             // Output shape: [1, 56, 3549]
             // Channels 0-3: cx, cy, w, h  |  Channels 4-55: class confidences (52 classes)
@@ -161,11 +162,19 @@ class ModelService {
                 var keep = true
                 for kept in nmsResults {
                     let inter = result.boundingBox.intersection(kept.boundingBox)
-                    let unionArea = result.boundingBox.width * result.boundingBox.height
-                                 + kept.boundingBox.width   * kept.boundingBox.height
-                                 - inter.width * inter.height
-                    let iou = (inter.width * inter.height) / unionArea
-                    if iou > 0.45 { keep = false; break }
+                    if !inter.isNull && !inter.isEmpty {
+                        let interArea = inter.width * inter.height
+                        let area1 = result.boundingBox.width * result.boundingBox.height
+                        let area2 = kept.boundingBox.width * kept.boundingBox.height
+                        let unionArea = area1 + area2 - interArea
+                        if unionArea > 0 {
+                            let iou = interArea / unionArea
+                            if iou > 0.45 {
+                                keep = false
+                                break
+                            }
+                        }
+                    }
                 }
                 if keep { nmsResults.append(result) }
             }
