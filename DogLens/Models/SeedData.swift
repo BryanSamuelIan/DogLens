@@ -52,7 +52,7 @@ extension DogBreed {
     "Standard Poodle",                 // 47
     "Standard Schnauzer",              // 48
     "Toy Poodle",                      // 49
-    "Toy Terrier",                    // 50
+    "Toy Terrier",                     // 50
     "Wire-haired Fox Terrier"          // 51
 ]
 }
