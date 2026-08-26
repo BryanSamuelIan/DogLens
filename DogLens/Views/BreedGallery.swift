@@ -9,6 +9,12 @@ struct BreedGalleryView: View {
         GridItem(.adaptive(minimum: 150), spacing: 16)
     ]
 
+    private let totalBreeds = DogBreed.predefinedBreeds.count
+
+    var unlockedCount: Int {
+        breeds.filter { $0.imageCount > 0 }.count
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -36,6 +42,25 @@ struct BreedGalleryView: View {
                 }
             }
             .navigationTitle("Breed Gallery")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("\(unlockedCount)/\(totalBreeds)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Text("Unlocked")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
             .searchable(text: $vm.searchText, prompt: "Search breeds")
             .background(Color(.systemGroupedBackground))
         }

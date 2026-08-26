@@ -60,6 +60,49 @@ struct ResultView: View {
 
                 // Actions
                 VStack(spacing: 16) {
+                    VStack(spacing: 6) {
+                        if vm.isNewBreed {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                Text("New Breed!")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.orange)
+                                Image(systemName: "sparkles")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(Capsule())
+                            .transition(.scale.combined(with: .opacity))
+                        }
+
+                        Button(action: vm.saveToBreedGallery) {
+                            HStack(spacing: 8) {
+                                if vm.isNewBreed {
+                                    Image(systemName: "star.fill")
+                                        .font(.subheadline)
+                                }
+                                Text("Save to Breed Gallery")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(vm.isNewBreed
+                                ? LinearGradient(colors: [.orange, .pink], startPoint: .leading, endPoint: .trailing)
+                                : LinearGradient(colors: [.orange, .orange], startPoint: .leading, endPoint: .trailing)
+                            )
+                            .cornerRadius(16)
+                            .shadow(color: vm.isNewBreed ? .orange.opacity(0.5) : .clear, radius: 8, x: 0, y: 4)
+                        }
+                        .animation(.easeInOut(duration: 0.3), value: vm.isNewBreed)
+                    }
+
                     Button(action: vm.saveToPhotos) {
                         Text("Save to Photos")
                             .font(.headline)
@@ -67,16 +110,6 @@ struct ResultView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.blue)
-                            .cornerRadius(16)
-                    }
-
-                    Button(action: vm.saveToBreedGallery) {
-                        Text("Save to Breed Gallery")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.orange)
                             .cornerRadius(16)
                     }
 
@@ -89,6 +122,7 @@ struct ResultView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 40)
+
             }
             .padding(.top, 20)
         }
