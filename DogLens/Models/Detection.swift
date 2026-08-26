@@ -1,7 +1,9 @@
-//
-//  Detection.swift
-//  DogLens
-//
-//  Created by Bryan Samuel on 21/08/26.
-//
+import Foundation
+import CoreGraphics
 
+struct DetectionResult: Identifiable {
+    let id = UUID()
+    let boundingBox: CGRect
+    let label: String
+    let confidence: Float
+}

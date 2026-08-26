@@ -34,6 +34,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Models/DogLensImage.mlpackage,
+				Resources/Models/DogLensImagev2.mlpackage,
 			);
 			target = 6F9277D530382CC7007EA6E8 /* DogLensTests */;
 		};
@@ -41,6 +42,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Models/DogLensImage.mlpackage,
+				Resources/Models/DogLensImagev2.mlpackage,
 			);
 			target = 6F9277DF30382CC7007EA6E8 /* DogLensUITests */;
 		};
@@ -132,8 +134,6 @@
 				6F9277C930382CC6007EA6E8 /* DogLens */,
 			);
 			name = DogLens;
-			packageProductDependencies = (
-			);
 			productName = DogLens;
 			productReference = 6F9277C730382CC6007EA6E8 /* DogLens.app */;
 			productType = "com.apple.product-type.application";
@@ -155,8 +155,6 @@
 				6F9277D930382CC7007EA6E8 /* DogLensTests */,
 			);
 			name = DogLensTests;
-			packageProductDependencies = (
-			);
 			productName = DogLensTests;
 			productReference = 6F9277D630382CC7007EA6E8 /* DogLensTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -178,8 +176,6 @@
 				6F9277E330382CC7007EA6E8 /* DogLensUITests */,
 			);
 			name = DogLensUITests;
-			packageProductDependencies = (
-			);
 			productName = DogLensUITests;
 			productReference = 6F9277E030382CC7007EA6E8 /* DogLensUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -343,6 +339,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = No;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -401,6 +398,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = No;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -421,6 +419,9 @@
 				DEVELOPMENT_TEAM = L82Q8X2NF4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your photos to scan dog images.\"";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -453,6 +454,9 @@
 				DEVELOPMENT_TEAM = L82Q8X2NF4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your photos to scan dog images.\"";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
