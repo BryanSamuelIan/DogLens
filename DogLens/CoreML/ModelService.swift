@@ -6,15 +6,15 @@ import CoreGraphics
 class ModelService {
     static let shared = ModelService()
 
-    private var model: DogLensImage?
-    private var modelTask: Task<DogLensImage, Error>?
+    private var model: DogLensImagev2?
+    private var modelTask: Task<DogLensImagev2, Error>?
     private let modelLock = NSLock()
 
     private init() {
         _ = getOrStartModelTask()
     }
 
-    private func getOrStartModelTask() -> Task<DogLensImage, Error> {
+    private func getOrStartModelTask() -> Task<DogLensImagev2, Error> {
         modelLock.lock()
         defer { modelLock.unlock() }
 
@@ -22,16 +22,16 @@ class ModelService {
             return existingTask
         }
 
-        let task = Task.detached(priority: .userInitiated) { () -> DogLensImage in
+        let task = Task.detached(priority: .userInitiated) { () -> DogLensImagev2 in
             do {
                 let config = MLModelConfiguration()
                 config.computeUnits = .cpuAndNeuralEngine
-                return try DogLensImage(configuration: config)
+                return try DogLensImagev2(configuration: config)
             } catch {
                 print("Failed to load CoreML model with .cpuAndNeuralEngine, trying .cpuOnly: \(error)")
                 let cpuConfig = MLModelConfiguration()
                 cpuConfig.computeUnits = .cpuOnly
-                return try DogLensImage(configuration: cpuConfig)
+                return try DogLensImagev2(configuration: cpuConfig)
             }
         }
 
@@ -39,7 +39,7 @@ class ModelService {
         return task
     }
 
-    private func getModel() async throws -> DogLensImage {
+    private func getModel() async throws -> DogLensImagev2 {
         modelLock.lock()
         if let model = self.model {
             modelLock.unlock()
@@ -76,7 +76,7 @@ class ModelService {
                               userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to pixel buffer"])
             }
 
-            let input = DogLensImageInput(image: pixelBuffer)
+            let input = DogLensImagev2Input(image: pixelBuffer)
             let output = try model.prediction(input: input)
 
             // Output shape: [1, 56, 3549]
