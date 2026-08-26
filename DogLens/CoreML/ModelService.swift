@@ -119,7 +119,7 @@ class ModelService {
                     }
                 }
 
-                guard maxConf > 0.5 else { continue }
+                guard maxConf > 0.25 else { continue }
 
                 let iX = 0 * stride1 + i * stride2
                 let iY = 1 * stride1 + i * stride2

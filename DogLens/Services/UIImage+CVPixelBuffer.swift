@@ -1,6 +1,8 @@
 import UIKit
 import CoreGraphics
 import VideoToolbox
+import CoreImage
+import ImageIO
 
 extension UIImage {
     // MARK: - Original UIKit version (main-thread only)
@@ -31,7 +33,9 @@ extension UIImage {
         return buffer
     }
 
-    // MARK: - Thread-safe version using CoreGraphics only (no UIKit / no main thread required)
+    // MARK: - Thread-safe version using CoreImage & EXIF orientation (off main thread)
+    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
+
     func pixelBufferOffMain(width: Int, height: Int) -> CVPixelBuffer? {
         guard let cgImage = self.cgImage else { return nil }
 
@@ -44,62 +48,40 @@ extension UIImage {
                                   kCVPixelFormatType_32BGRA, attrs, &pixelBuffer) == kCVReturnSuccess,
               let buffer = pixelBuffer else { return nil }
 
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-
-        let pixelData = CVPixelBufferGetBaseAddress(buffer)
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        let bitmapInfo = CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        guard let context = CGContext(data: pixelData,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                                      space: colorSpace,
-                                      bitmapInfo: bitmapInfo) else { return nil }
+        let exifOrientation = CGImagePropertyOrientation(self.imageOrientation)
+        let ciImage = CIImage(cgImage: cgImage).oriented(exifOrientation)
 
         let targetWidth = CGFloat(width)
         let targetHeight = CGFloat(height)
 
-        context.saveGState()
+        let scaleX = targetWidth / ciImage.extent.width
+        let scaleY = targetHeight / ciImage.extent.height
 
-        switch self.imageOrientation {
-        case .down:
-            context.translateBy(x: targetWidth, y: targetHeight)
-            context.rotate(by: .pi)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        case .left:
-            context.translateBy(x: 0, y: targetHeight)
-            context.rotate(by: -.pi / 2)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetHeight, height: targetWidth))
-        case .right:
-            context.translateBy(x: targetWidth, y: 0)
-            context.rotate(by: .pi / 2)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetHeight, height: targetWidth))
-        case .upMirrored:
-            context.translateBy(x: targetWidth, y: 0)
-            context.scaleBy(x: -1, y: 1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        case .downMirrored:
-            context.translateBy(x: 0, y: targetHeight)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        case .leftMirrored:
-            context.translateBy(x: targetWidth, y: 0)
-            context.rotate(by: .pi / 2)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetHeight, height: targetWidth))
-        case .rightMirrored:
-            context.translateBy(x: 0, y: targetHeight)
-            context.rotate(by: -.pi / 2)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetHeight, height: targetWidth))
-        default: // .up
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        }
+        let transform = CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y)
+            .scaledBy(x: scaleX, y: scaleY)
 
-        context.restoreGState()
+        let finalImage = ciImage.transformed(by: transform)
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+
+        UIImage.sharedCIContext.render(finalImage, to: buffer, bounds: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight), colorSpace: colorSpace)
 
         return buffer
     }
 }
+
+extension CGImagePropertyOrientation {
+    init(_ uiOrientation: UIImage.Orientation) {
+        switch uiOrientation {
+        case .up: self = .up
+        case .upMirrored: self = .upMirrored
+        case .down: self = .down
+        case .downMirrored: self = .downMirrored
+        case .leftMirrored: self = .leftMirrored
+        case .left: self = .left
+        case .rightMirrored: self = .rightMirrored
+        case .right: self = .right
+        @unknown default: self = .up
+        }
+    }
+}
+
