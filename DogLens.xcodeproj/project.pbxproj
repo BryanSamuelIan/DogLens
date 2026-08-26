@@ -419,6 +419,7 @@
 				DEVELOPMENT_TEAM = L82Q8X2NF4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
@@ -455,6 +456,7 @@
 				DEVELOPMENT_TEAM = L82Q8X2NF4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
