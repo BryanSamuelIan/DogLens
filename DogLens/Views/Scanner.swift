@@ -83,31 +83,59 @@ class CameraViewController: UIViewController {
     
     func setupUI() {
         // Zoom Label
-        zoomLabel.font = .systemFont(ofSize: 14, weight: .bold)
+        zoomLabel.font = .systemFont(ofSize: 13, weight: .bold)
         zoomLabel.textColor = .white
         zoomLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         zoomLabel.textAlignment = .center
-        zoomLabel.layer.cornerRadius = 14
+        zoomLabel.layer.cornerRadius = 13
         zoomLabel.clipsToBounds = true
-        zoomLabel.frame = CGRect(x: (view.frame.width - 60) / 2, y: view.frame.height - 180, width: 60, height: 28)
         zoomLabel.alpha = 0
+        zoomLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(zoomLabel)
 
-        // Capture Button
-        let captureButton = UIButton(frame: CGRect(x: (view.frame.width - 70) / 2, y: view.frame.height - 120, width: 70, height: 70))
-        captureButton.layer.cornerRadius = 35
+        // Capture Button (Native HIG Shutter Style)
+        let captureButton = UIButton(type: .custom)
+        captureButton.translatesAutoresizingMaskIntoConstraints = false
         captureButton.backgroundColor = .white
+        captureButton.layer.cornerRadius = 36
         captureButton.layer.borderWidth = 5
         captureButton.layer.borderColor = UIColor.orange.cgColor
         captureButton.addTarget(self, action: #selector(capturePhoto), for: .touchUpInside)
         view.addSubview(captureButton)
-        
-        // Close Button
-        let closeButton = UIButton(frame: CGRect(x: 20, y: 50, width: 40, height: 40))
-        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+
+        // Close Button (HIG Translucent Circle with Bold X-mark)
+        let closeButton = UIButton(type: .system)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        let xImage = UIImage(systemName: "xmark", withConfiguration: config)
+        closeButton.setImage(xImage, for: .normal)
         closeButton.tintColor = .white
+        closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        closeButton.layer.cornerRadius = 20
+        closeButton.clipsToBounds = true
         closeButton.addTarget(self, action: #selector(closeCamera), for: .touchUpInside)
         view.addSubview(closeButton)
+
+        // Layout Constraints
+        NSLayoutConstraint.activate([
+            // Close Button (Top-Left, Safe Area compliant)
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            closeButton.widthAnchor.constraint(equalToConstant: 40),
+            closeButton.heightAnchor.constraint(equalToConstant: 40),
+
+            // Capture Button (Bottom Center, Safe Area compliant - positioned safely above home bar)
+            captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
+            captureButton.widthAnchor.constraint(equalToConstant: 72),
+            captureButton.heightAnchor.constraint(equalToConstant: 72),
+
+            // Zoom Label (Centered above Capture Button)
+            zoomLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            zoomLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -20),
+            zoomLabel.widthAnchor.constraint(equalToConstant: 64),
+            zoomLabel.heightAnchor.constraint(equalToConstant: 26)
+        ])
     }
 
     func setupGestures() {
