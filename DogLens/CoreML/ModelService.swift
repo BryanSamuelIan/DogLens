@@ -3,88 +3,53 @@ import CoreML
 import UIKit
 import CoreGraphics
 
+@MainActor
 class ModelService {
     static let shared = ModelService()
 
     private var model: DogLensImagev2?
-    private var modelTask: Task<DogLensImagev2, Error>?
-    private let modelLock = NSLock()
 
-    private init() {
-        _ = getOrStartModelTask()
-    }
+    private init() {}
 
-    private func getOrStartModelTask() -> Task<DogLensImagev2, Error> {
-        modelLock.lock()
-        defer { modelLock.unlock() }
-
-        if let existingTask = modelTask {
-            return existingTask
+    private func getModel() throws -> DogLensImagev2 {
+        if let existing = self.model {
+            return existing
         }
-
-        let task = Task.detached(priority: .userInitiated) { () -> DogLensImagev2 in
-            do {
-                let config = MLModelConfiguration()
-                config.computeUnits = .cpuAndNeuralEngine
-                return try DogLensImagev2(configuration: config)
-            } catch {
-                print("Failed to load CoreML model with .cpuAndNeuralEngine, trying .cpuOnly: \(error)")
-                let cpuConfig = MLModelConfiguration()
-                cpuConfig.computeUnits = .cpuOnly
-                return try DogLensImagev2(configuration: cpuConfig)
-            }
-        }
-
-        modelTask = task
-        return task
-    }
-
-    private func getModel() async throws -> DogLensImagev2 {
-        modelLock.lock()
-        if let model = self.model {
-            modelLock.unlock()
-            return model
-        }
-        modelLock.unlock()
-
-        let task = getOrStartModelTask()
-
         do {
-            let loadedModel = try await task.value
-            modelLock.lock()
-            self.model = loadedModel
-            modelLock.unlock()
-            return loadedModel
+            let config = MLModelConfiguration()
+            config.computeUnits = .cpuAndNeuralEngine
+            let loaded = try DogLensImagev2(configuration: config)
+            self.model = loaded
+            return loaded
         } catch {
-            modelLock.lock()
-            self.modelTask = nil
-            modelLock.unlock()
-            throw NSError(domain: "ModelError", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to load CoreML model: \(error.localizedDescription)"])
+            print("Failed to load CoreML model with .cpuAndNeuralEngine, trying .cpuOnly: \(error)")
+            let cpuConfig = MLModelConfiguration()
+            cpuConfig.computeUnits = .cpuOnly
+            let loaded = try DogLensImagev2(configuration: cpuConfig)
+            self.model = loaded
+            return loaded
         }
     }
 
-    /// Run inference entirely off the main thread so CoreML can freely
-    /// dispatch without deadlocking on real devices.
+    /// Run inference with prediction on MainActor and NMS processing off the main thread.
     func detectDogs(in image: UIImage) async throws -> [DetectionResult] {
-        let model = try await getModel()
+        let model = try getModel()
 
-        return try await Task.detached(priority: .userInitiated) {
-            // Use the thread-safe CoreGraphics-only pixel buffer conversion
-            guard let pixelBuffer = image.pixelBufferOffMain(width: 416, height: 416) else {
-                throw NSError(domain: "ImageError", code: -1,
-                              userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to pixel buffer"])
-            }
+        guard let pixelBuffer = image.pixelBufferOffMain(width: 416, height: 416) else {
+            throw NSError(domain: "ImageError", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to pixel buffer"])
+        }
 
-            let input = DogLensImagev2Input(image: pixelBuffer)
-            let output = try model.prediction(input: input)
+        let input = DogLensImagev2Input(image: pixelBuffer)
+        let output = try await model.prediction(input: input)
 
-            // Output shape: [1, 56, 3549]
-            // Channels 0-3: cx, cy, w, h  |  Channels 4-55: class confidences (52 classes)
-            guard let multiArray = output.featureValue(for: "var_1223")?.multiArrayValue else {
-                return []
-            }
+        guard let multiArray = output.featureValue(for: "var_1223")?.multiArrayValue else {
+            return []
+        }
 
+        let imageSize = image.size
+
+        return await Task.detached(priority: .userInitiated) {
             var results: [DetectionResult] = []
             let numAnchors = 3549
             let numClasses = 52
@@ -97,8 +62,8 @@ class ModelService {
             let isFloat16 = multiArray.dataType == .float16
             let isDouble  = multiArray.dataType == .double
 
-            let ptr32    = isFloat32 ? multiArray.dataPointer.bindMemory(to: Float32.self, capacity: multiArray.count) : nil
-            let ptr16    = isFloat16 ? multiArray.dataPointer.bindMemory(to: Float16.self,  capacity: multiArray.count) : nil
+            let ptr32     = isFloat32 ? multiArray.dataPointer.bindMemory(to: Float32.self, capacity: multiArray.count) : nil
+            let ptr16     = isFloat16 ? multiArray.dataPointer.bindMemory(to: Float16.self,  capacity: multiArray.count) : nil
             let ptrDouble = isDouble  ? multiArray.dataPointer.bindMemory(to: Double.self,   capacity: multiArray.count) : nil
 
             for i in 0..<numAnchors {
@@ -139,8 +104,8 @@ class ModelService {
                 }
 
                 // YOLOv8 outputs are in the 416×416 model input space — scale to original image
-                let scaleX = image.size.width  / 416.0
-                let scaleY = image.size.height / 416.0
+                let scaleX = imageSize.width  / 416.0
+                let scaleY = imageSize.height / 416.0
 
                 let rect = CGRect(
                     x: (x - w / 2) * scaleX,

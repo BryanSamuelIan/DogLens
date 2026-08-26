@@ -63,8 +63,8 @@ class CameraViewController: UIViewController {
         previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         previewLayer.frame = view.bounds
         previewLayer.videoGravity = .resizeAspect
-        if let connection = previewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
+        if let connection = previewLayer.connection {
+            setPortraitOrientation(on: connection)
         }
         view.layer.addSublayer(previewLayer)
         
@@ -76,8 +76,20 @@ class CameraViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
-        if let connection = previewLayer?.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
+        if let connection = previewLayer?.connection {
+            setPortraitOrientation(on: connection)
+        }
+    }
+
+    private func setPortraitOrientation(on connection: AVCaptureConnection) {
+        if #available(iOS 17.0, *) {
+            if connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            }
+        } else {
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
+            }
         }
     }
     
@@ -247,8 +259,8 @@ class CameraViewController: UIViewController {
 
     // MARK: - Photo Capture
     @objc func capturePhoto() {
-        if let connection = photoOutput.connection(with: .video), connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
+        if let connection = photoOutput.connection(with: .video) {
+            setPortraitOrientation(on: connection)
         }
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
