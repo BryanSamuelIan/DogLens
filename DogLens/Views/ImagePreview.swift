@@ -2,29 +2,26 @@ import SwiftUI
 
 struct ImagePreviewView: View {
     let image: UIImage
-    @State private var isDetecting = false
-    @State private var detectionResults: [DetectionResult]?
-    @State private var showResult = false
-    @State private var showNoDetection = false
+    @StateObject private var vm = ScannerViewModel()
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         VStack {
             Spacer()
-            
+
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
                 .cornerRadius(16)
                 .padding()
-            
+
             Spacer()
-            
-            if isDetecting {
+
+            if vm.isDetecting {
                 ProgressView("Analyzing image...")
                     .padding()
             } else {
-                Button(action: detect) {
+                Button(action: { vm.detect(image: image) }) {
                     Text("Detect Dogs")
                         .font(.headline)
                         .foregroundColor(.white)
@@ -34,10 +31,8 @@ struct ImagePreviewView: View {
                         .cornerRadius(16)
                 }
                 .padding(.horizontal)
-                
-                Button(action: {
-                    dismiss()
-                }) {
+
+                Button(action: { dismiss() }) {
                     Text("Retake")
                         .font(.subheadline)
                         .foregroundColor(.blue)
@@ -47,36 +42,21 @@ struct ImagePreviewView: View {
         }
         .navigationTitle("Preview")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $showResult) {
-            if let results = detectionResults, !results.isEmpty {
+        .navigationDestination(isPresented: $vm.showResult) {
+            if let results = vm.detectionResults, !results.isEmpty {
                 ResultView(image: image, results: results)
             }
         }
-        .navigationDestination(isPresented: $showNoDetection) {
+        .navigationDestination(isPresented: $vm.showNoDetection) {
             NoDetectionView()
         }
-    }
-    
-    private func detect() {
-        isDetecting = true
-        Task {
-            do {
-                let results = try await ModelService.shared.detectDogs(in: image)
-                DispatchQueue.main.async {
-                    self.isDetecting = false
-                    self.detectionResults = results
-                    if results.isEmpty {
-                        self.showNoDetection = true
-                    } else {
-                        self.showResult = true
-                    }
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isDetecting = false
-                    print("Detection error: \(error)")
-                }
-            }
+        .alert("Detection Error", isPresented: Binding(
+            get: { vm.errorMessage != nil },
+            set: { if !$0 { vm.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.errorMessage = nil }
+        } message: {
+            Text(vm.errorMessage ?? "")
         }
     }
 }

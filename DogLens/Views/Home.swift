@@ -1,46 +1,35 @@
 import SwiftUI
 import PhotosUI
-import AVFoundation
-import Photos
 
 struct HomeView: View {
-    @State private var showCamera = false
-    @State private var showPhotoPicker = false
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
-    @State private var showPreview = false
-    
-    @State private var showPermissionAlert = false
-    @State private var permissionMessage = ""
-    
+    @StateObject private var vm = HomeViewModel()
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                // App Logo Placeholder
+                // App Logo
                 Image(systemName: "viewfinder.circle.fill")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 120, height: 120)
                     .foregroundStyle(.orange, .blue.opacity(0.8))
-                
+
                 VStack(spacing: 8) {
                     Text("DogLens")
                         .font(.system(size: 40, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
-                    
+
                     Text("Identify dog breeds instantly using CoreML.")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
-                
+
                 Spacer()
-                
+
                 VStack(spacing: 16) {
-                    Button(action: {
-                        requestCameraPermission()
-                    }) {
+                    Button(action: vm.requestCameraPermission) {
                         HStack {
                             Image(systemName: "camera.fill")
                             Text("Scan Dog")
@@ -52,10 +41,8 @@ struct HomeView: View {
                         .background(Color.orange)
                         .cornerRadius(16)
                     }
-                    
-                    Button(action: {
-                        requestPhotoPermission()
-                    }) {
+
+                    Button(action: vm.requestPhotoPermission) {
                         HStack {
                             Image(systemName: "photo.on.rectangle.angled")
                             Text("Upload Photo")
@@ -72,77 +59,26 @@ struct HomeView: View {
                 .padding(.bottom, 40)
             }
             .padding(.top, 60)
-            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
-            .onChange(of: selectedPhotoItem) { _, newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        selectedImage = image
-                        showPreview = true
-                        selectedPhotoItem = nil
-                    }
-                }
+            .photosPicker(isPresented: $vm.showPhotoPicker, selection: $vm.selectedPhotoItem, matching: .images)
+            .onChange(of: vm.selectedPhotoItem) { _, _ in
+                Task { await vm.loadSelectedPhoto() }
             }
-            .navigationDestination(isPresented: $showPreview) {
-                if let image = selectedImage {
+            .navigationDestination(isPresented: $vm.showPreview) {
+                if let image = vm.selectedImage {
                     ImagePreviewView(image: image)
                 }
             }
-            .fullScreenCover(isPresented: $showCamera) {
+            .fullScreenCover(isPresented: $vm.showCamera) {
                 ScannerView { image in
-                    if let image = image {
-                        selectedImage = image
-                        showPreview = true
-                    }
+                    vm.handleCameraCapture(image)
+                    vm.showCamera = false
                 }
             }
-            .alert("Permission Denied", isPresented: $showPermissionAlert) {
+            .alert("Permission Denied", isPresented: $vm.showPermissionAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text(permissionMessage)
+                Text(vm.permissionMessage)
             }
-        }
-    }
-    
-    private func requestCameraPermission() {
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        if status == .authorized {
-            showCamera = true
-        } else if status == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        self.showCamera = true
-                    } else {
-                        self.permissionMessage = "Camera access is required to scan dogs. Please enable it in Settings."
-                        self.showPermissionAlert = true
-                    }
-                }
-            }
-        } else {
-            self.permissionMessage = "Camera access is required to scan dogs. Please enable it in Settings."
-            self.showPermissionAlert = true
-        }
-    }
-    
-    private func requestPhotoPermission() {
-        let status = PHPhotoLibrary.authorizationStatus()
-        if status == .authorized || status == .limited {
-            showPhotoPicker = true
-        } else if status == .notDetermined {
-            PHPhotoLibrary.requestAuthorization { newStatus in
-                DispatchQueue.main.async {
-                    if newStatus == .authorized || newStatus == .limited {
-                        self.showPhotoPicker = true
-                    } else {
-                        self.permissionMessage = "Photo Library access is required to upload photos. Please enable it in Settings."
-                        self.showPermissionAlert = true
-                    }
-                }
-            }
-        } else {
-            self.permissionMessage = "Photo Library access is required to upload photos. Please enable it in Settings."
-            self.showPermissionAlert = true
         }
     }
 }

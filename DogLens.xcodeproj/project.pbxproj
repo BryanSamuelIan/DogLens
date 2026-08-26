@@ -34,6 +34,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Models/DogLensImage.mlpackage,
+				Resources/Models/DogLensImagev2.mlpackage,
 			);
 			target = 6F9277D530382CC7007EA6E8 /* DogLensTests */;
 		};
@@ -41,6 +42,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Models/DogLensImage.mlpackage,
+				Resources/Models/DogLensImagev2.mlpackage,
 			);
 			target = 6F9277DF30382CC7007EA6E8 /* DogLensUITests */;
 		};

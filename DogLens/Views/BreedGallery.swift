@@ -3,19 +3,29 @@ import SwiftData
 
 struct BreedGalleryView: View {
     @Query(sort: \DogBreed.name) private var breeds: [DogBreed]
-    
+    @StateObject private var vm = BreedGalleryViewModel()
+
     let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
     ]
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                if breeds.isEmpty {
-                    ContentUnavailableView("No Breeds Found", systemImage: "magnifyingglass", description: Text("Dog breeds haven't been loaded yet."))
+                let displayed = vm.filteredBreeds(from: breeds)
+                if displayed.isEmpty {
+                    ContentUnavailableView(
+                        vm.searchText.isEmpty ? "No Breeds Found" : "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text(
+                            vm.searchText.isEmpty
+                                ? "Dog breeds haven't been loaded yet."
+                                : "No breeds match \"\(vm.searchText)\"."
+                        )
+                    )
                 } else {
                     LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(breeds) { breed in
+                        ForEach(displayed) { breed in
                             NavigationLink(destination: BreedDetailView(breed: breed)) {
                                 BreedCard(breed: breed)
                             }
@@ -26,6 +36,7 @@ struct BreedGalleryView: View {
                 }
             }
             .navigationTitle("Breed Gallery")
+            .searchable(text: $vm.searchText, prompt: "Search breeds")
             .background(Color(.systemGroupedBackground))
         }
     }
@@ -33,13 +44,14 @@ struct BreedGalleryView: View {
 
 struct BreedCard: View {
     let breed: DogBreed
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Thumbnail
             ZStack {
                 Color.gray.opacity(0.2)
-                if let firstImage = breed.images.first, let uiImage = UIImage(data: firstImage.imageData) {
+                if let firstImage = breed.images.first,
+                   let uiImage = UIImage(data: firstImage.imageData) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
@@ -51,13 +63,13 @@ struct BreedCard: View {
             }
             .frame(height: 120)
             .clipped()
-            
+
             // Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(breed.name)
                     .font(.headline)
                     .lineLimit(1)
-                
+
                 Text("\(breed.imageCount) Images")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
