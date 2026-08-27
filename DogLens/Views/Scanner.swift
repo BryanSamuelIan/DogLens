@@ -23,6 +23,7 @@ struct ScanDogContainerView: View {
                 TabView(selection: $selectedTab) {
                     // Photo tab
                     ScannerView(
+                        isActive: selectedTab == 0,
                         onCapture: { image in
                             capturedImage   = image
                             showImagePreview = true
@@ -34,6 +35,7 @@ struct ScanDogContainerView: View {
 
                     // Video tab
                     VideoScannerView(
+                        isActive: selectedTab == 1,
                         onRecordingFinished: { url in
                             recordedVideoURL  = url
                             showVideoPreview  = true
@@ -91,6 +93,7 @@ struct ScanDogContainerView: View {
 // MARK: - Photo Scanner Representable
 
 struct ScannerView: UIViewControllerRepresentable {
+    var isActive: Bool
     var onCapture: (UIImage?) -> Void
     var onClose: (() -> Void)?
 
@@ -98,12 +101,14 @@ struct ScannerView: UIViewControllerRepresentable {
         let vc = CameraViewController()
         vc.onCapture = onCapture
         vc.onClose   = onClose
+        vc.setActive(isActive)
         return vc
     }
 
     func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {
         uiViewController.onCapture = onCapture
         uiViewController.onClose   = onClose
+        uiViewController.setActive(isActive)
     }
 }
 
@@ -117,11 +122,29 @@ class CameraViewController: UIViewController {
     var onCapture: ((UIImage?) -> Void)?
     var onClose: (() -> Void)?
     private let sessionQueue = DispatchQueue(label: "com.doglens.photoSessionQueue")
+    private(set) var isActive: Bool = true
 
     private var initialZoomFactor: CGFloat = 1.0
     private let zoomLabel = UILabel()
     private var zoomTimer: Timer?
     private var focusRingView: UIView?
+
+    func setActive(_ active: Bool) {
+        guard self.isActive != active else { return }
+        self.isActive = active
+        sessionQueue.async { [weak self] in
+            guard let self = self, let session = self.captureSession else { return }
+            if active {
+                if !session.isRunning {
+                    session.startRunning()
+                }
+            } else {
+                if session.isRunning {
+                    session.stopRunning()
+                }
+            }
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -133,20 +156,24 @@ class CameraViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        sessionQueue.async { [weak self] in
-            guard let session = self?.captureSession else { return }
-            if !session.isRunning {
-                session.startRunning()
+        if isActive {
+            sessionQueue.async { [weak self] in
+                guard let self = self, let session = self.captureSession else { return }
+                if !session.isRunning {
+                    session.startRunning()
+                }
             }
         }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        sessionQueue.async { [weak self] in
-            guard let session = self?.captureSession else { return }
-            if !session.isRunning {
-                session.startRunning()
+        if isActive {
+            sessionQueue.async { [weak self] in
+                guard let self = self, let session = self.captureSession else { return }
+                if !session.isRunning {
+                    session.startRunning()
+                }
             }
         }
     }

@@ -4,6 +4,7 @@ import AVFoundation
 // MARK: - SwiftUI Representable
 
 struct VideoScannerView: UIViewControllerRepresentable {
+    var isActive: Bool
     var onRecordingFinished: (URL) -> Void
     var onClose: () -> Void
 
@@ -11,12 +12,14 @@ struct VideoScannerView: UIViewControllerRepresentable {
         let vc = VideoCameraViewController()
         vc.onRecordingFinished = onRecordingFinished
         vc.onClose = onClose
+        vc.setActive(isActive)
         return vc
     }
 
     func updateUIViewController(_ uiViewController: VideoCameraViewController, context: Context) {
         uiViewController.onRecordingFinished = onRecordingFinished
         uiViewController.onClose = onClose
+        uiViewController.setActive(isActive)
     }
 }
 
@@ -30,6 +33,7 @@ class VideoCameraViewController: UIViewController {
     var previewLayer: AVCaptureVideoPreviewLayer!
     var videoDevice: AVCaptureDevice?
     private let sessionQueue = DispatchQueue(label: "com.doglens.videoSessionQueue")
+    private(set) var isActive: Bool = true
 
     // MARK: Callbacks
     var onRecordingFinished: ((URL) -> Void)?
@@ -49,6 +53,26 @@ class VideoCameraViewController: UIViewController {
     private let timerLabel    = UILabel()
     private let closeButton   = UIButton(type: .system)
     private let zoomLabel     = UILabel()
+
+    func setActive(_ active: Bool) {
+        guard self.isActive != active else { return }
+        self.isActive = active
+        if !active && isRecording {
+            stopRecording()
+        }
+        sessionQueue.async { [weak self] in
+            guard let self = self, let session = self.captureSession else { return }
+            if active {
+                if !session.isRunning {
+                    session.startRunning()
+                }
+            } else {
+                if session.isRunning {
+                    session.stopRunning()
+                }
+            }
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -75,20 +99,24 @@ class VideoCameraViewController: UIViewController {
             setPortraitOrientation(on: conn)
         }
         
-        sessionQueue.async { [weak self] in
-            guard let self = self, let session = self.captureSession else { return }
-            if !session.isRunning {
-                session.startRunning()
+        if isActive {
+            sessionQueue.async { [weak self] in
+                guard let self = self, let session = self.captureSession else { return }
+                if !session.isRunning {
+                    session.startRunning()
+                }
             }
         }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        sessionQueue.async { [weak self] in
-            guard let self = self, let session = self.captureSession else { return }
-            if !session.isRunning {
-                session.startRunning()
+        if isActive {
+            sessionQueue.async { [weak self] in
+                guard let self = self, let session = self.captureSession else { return }
+                if !session.isRunning {
+                    session.startRunning()
+                }
             }
         }
     }
