@@ -14,7 +14,10 @@ struct VideoScannerView: UIViewControllerRepresentable {
         return vc
     }
 
-    func updateUIViewController(_ uiViewController: VideoCameraViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: VideoCameraViewController, context: Context) {
+        uiViewController.onRecordingFinished = onRecordingFinished
+        uiViewController.onClose = onClose
+    }
 }
 
 // MARK: - UIKit Camera Controller
@@ -26,6 +29,7 @@ class VideoCameraViewController: UIViewController {
     var movieOutput: AVCaptureMovieFileOutput!
     var previewLayer: AVCaptureVideoPreviewLayer!
     var videoDevice: AVCaptureDevice?
+    private let sessionQueue = DispatchQueue(label: "com.doglens.videoSessionQueue")
 
     // MARK: Callbacks
     var onRecordingFinished: ((URL) -> Void)?
@@ -58,31 +62,55 @@ class VideoCameraViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        guard let session = captureSession, !session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        // Reset recording UI state when returning
+        isRecording = false
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        timerLabel.alpha = 0
+        animateInnerCircle(toStop: false)
+
+        // Ensure preview connection is enabled
+        if let conn = previewLayer?.connection {
+            conn.isEnabled = true
+            setPortraitOrientation(on: conn)
+        }
+        
+        sessionQueue.async { [weak self] in
+            guard let self = self, let session = self.captureSession else { return }
+            if !session.isRunning {
+                session.startRunning()
+            }
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        sessionQueue.async { [weak self] in
+            guard let self = self, let session = self.captureSession else { return }
+            if !session.isRunning {
+                session.startRunning()
+            }
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if isRecording {
-            onRecordingFinished = nil
-            movieOutput?.stopRecording()
-            isRecording = false
-            recordingTimer?.invalidate()
-            recordingTimer = nil
+            stopRecording()
         }
-        let session = captureSession
-        DispatchQueue.global(qos: .userInitiated).async {
-            session?.stopRunning()
+        // Only stop capture session if container is dismissing or being popped
+        if isBeingDismissed || isMovingFromParent {
+            sessionQueue.async { [weak self] in
+                self?.captureSession?.stopRunning()
+            }
         }
     }
 
     deinit {
         recordingTimer?.invalidate()
         zoomTimer?.invalidate()
-        let session = captureSession
-        DispatchQueue.global(qos: .userInitiated).async {
-            session?.stopRunning()
+        sessionQueue.async { [weak self] in
+            self?.captureSession?.stopRunning()
         }
     }
 
@@ -241,15 +269,10 @@ class VideoCameraViewController: UIViewController {
 
     @objc func closeTapped() {
         if isRecording {
-            onRecordingFinished = nil
-            movieOutput?.stopRecording()
-            isRecording = false
-            recordingTimer?.invalidate()
-            recordingTimer = nil
+            stopRecording()
         }
-        let session = captureSession
-        DispatchQueue.global(qos: .userInitiated).async {
-            session?.stopRunning()
+        sessionQueue.async { [weak self] in
+            self?.captureSession?.stopRunning()
         }
         onClose?()
     }
@@ -259,11 +282,30 @@ class VideoCameraViewController: UIViewController {
     }
 
     private func startRecording() {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mov")
+        guard let movieOutput = movieOutput else { return }
 
-        if let conn = movieOutput.connection(with: .video) { setPortraitOrientation(on: conn) }
+        // Prevent crash if movieOutput is already recording or busy
+        if movieOutput.isRecording {
+            print("Cannot start recording: movieOutput is already recording.")
+            return
+        }
+
+        // Ensure session is running before starting recording
+        if let session = captureSession, !session.isRunning {
+            sessionQueue.async { [weak self] in
+                self?.captureSession?.startRunning()
+            }
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rec_\(UUID().uuidString).mov")
+
+        try? FileManager.default.removeItem(at: tempURL)
+
+        if let conn = movieOutput.connection(with: .video), conn.isActive {
+            setPortraitOrientation(on: conn)
+        }
+
         movieOutput.startRecording(to: tempURL, recordingDelegate: self)
         isRecording = true
         recordingSeconds = 0
@@ -271,6 +313,7 @@ class VideoCameraViewController: UIViewController {
         UIView.animate(withDuration: 0.2) { self.timerLabel.alpha = 1 }
         updateTimerLabel()
 
+        recordingTimer?.invalidate()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.recordingSeconds += 1
@@ -281,7 +324,8 @@ class VideoCameraViewController: UIViewController {
     }
 
     private func stopRecording() {
-        movieOutput.stopRecording()
+        guard isRecording || (movieOutput?.isRecording ?? false) else { return }
+        movieOutput?.stopRecording()
         isRecording = false
         recordingTimer?.invalidate()
         recordingTimer = nil

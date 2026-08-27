@@ -68,6 +68,16 @@ struct ScanDogContainerView: View {
                     VideoPreviewView(videoURL: url)
                 }
             }
+            .onChange(of: showVideoPreview) { _, isPresented in
+                if !isPresented {
+                    recordedVideoURL = nil
+                }
+            }
+            .onChange(of: showImagePreview) { _, isPresented in
+                if !isPresented {
+                    capturedImage = nil
+                }
+            }
         }
     }
 
@@ -91,7 +101,10 @@ struct ScannerView: UIViewControllerRepresentable {
         return vc
     }
 
-    func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {
+        uiViewController.onCapture = onCapture
+        uiViewController.onClose   = onClose
+    }
 }
 
 // MARK: - Photo Camera UIViewController
@@ -103,6 +116,7 @@ class CameraViewController: UIViewController {
     var videoDevice: AVCaptureDevice?
     var onCapture: ((UIImage?) -> Void)?
     var onClose: (() -> Void)?
+    private let sessionQueue = DispatchQueue(label: "com.doglens.photoSessionQueue")
 
     private var initialZoomFactor: CGFloat = 1.0
     private let zoomLabel = UILabel()
@@ -119,13 +133,36 @@ class CameraViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        guard let session = captureSession, !session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        sessionQueue.async { [weak self] in
+            guard let session = self?.captureSession else { return }
+            if !session.isRunning {
+                session.startRunning()
+            }
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        sessionQueue.async { [weak self] in
+            guard let session = self?.captureSession else { return }
+            if !session.isRunning {
+                session.startRunning()
+            }
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        captureSession?.stopRunning()
+        sessionQueue.async { [weak self] in
+            self?.captureSession?.stopRunning()
+        }
+    }
+
+    deinit {
+        zoomTimer?.invalidate()
+        sessionQueue.async { [weak self] in
+            self?.captureSession?.stopRunning()
+        }
     }
 
     func setupCamera() {
