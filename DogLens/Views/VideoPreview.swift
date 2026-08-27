@@ -68,6 +68,10 @@ struct VideoPreviewView: View {
             vm.breeds = breeds
             player.play()
         }
+        .onDisappear {
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
         .onChange(of: breeds) { _, newBreeds in vm.breeds = newBreeds }
         .alert("Save Result", isPresented: $vm.showingSaveAlert) {
             Button("OK", role: .cancel) { }

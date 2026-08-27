@@ -64,8 +64,26 @@ class VideoCameraViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if isRecording { stopRecording() }
-        captureSession?.stopRunning()
+        if isRecording {
+            onRecordingFinished = nil
+            movieOutput?.stopRecording()
+            isRecording = false
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+        }
+        let session = captureSession
+        DispatchQueue.global(qos: .userInitiated).async {
+            session?.stopRunning()
+        }
+    }
+
+    deinit {
+        recordingTimer?.invalidate()
+        zoomTimer?.invalidate()
+        let session = captureSession
+        DispatchQueue.global(qos: .userInitiated).async {
+            session?.stopRunning()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -192,9 +210,10 @@ class VideoCameraViewController: UIViewController {
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40),
 
-            timerLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 22),
+            // Positioned safely below the notch / dynamic island / front camera and top picker
+            timerLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 64),
             timerLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            timerLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 90),
+            timerLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 96),
             timerLabel.heightAnchor.constraint(equalToConstant: 28),
 
             recordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -220,7 +239,20 @@ class VideoCameraViewController: UIViewController {
 
     // MARK: - Actions
 
-    @objc func closeTapped() { onClose?() }
+    @objc func closeTapped() {
+        if isRecording {
+            onRecordingFinished = nil
+            movieOutput?.stopRecording()
+            isRecording = false
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+        }
+        let session = captureSession
+        DispatchQueue.global(qos: .userInitiated).async {
+            session?.stopRunning()
+        }
+        onClose?()
+    }
 
     @objc func recordTapped() {
         isRecording ? stopRecording() : startRecording()
@@ -345,12 +377,17 @@ extension VideoCameraViewController: AVCaptureFileOutputRecordingDelegate {
                     didFinishRecordingTo outputFileURL: URL,
                     from connections: [AVCaptureConnection],
                     error: Error?) {
-        DispatchQueue.main.async {
-            if let error {
-                print("Video recording error: \(error.localizedDescription)")
-                return
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let callback = self.onRecordingFinished else { return }
+            if let error = error {
+                let nsErr = error as NSError
+                let successfullyFinished = (nsErr.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool) ?? false
+                if !successfullyFinished {
+                    print("Video recording ended with error: \(error.localizedDescription)")
+                    return
+                }
             }
-            self.onRecordingFinished?(outputFileURL)
+            callback(outputFileURL)
         }
     }
 }
