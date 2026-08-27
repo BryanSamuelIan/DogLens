@@ -22,7 +22,10 @@ struct ImagePreviewView: View {
                     .padding()
             } else {
                 Button(action: { vm.detect(image: image) }) {
-                    Text("Detect Dogs")
+                    HStack {
+                        Image(systemName: "brain")
+                        Text("Detect Dogs")
+                    }
                         .font(.headline)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -33,7 +36,7 @@ struct ImagePreviewView: View {
                 .padding(.horizontal)
 
                 Button(action: { dismiss() }) {
-                    Text("Retake")
+                    Text("Go Back")
                         .font(.subheadline)
                         .foregroundColor(.blue)
                         .padding()

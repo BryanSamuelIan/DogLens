@@ -1,17 +1,100 @@
 import SwiftUI
 import AVFoundation
 
+// MARK: - Scan Dog Container (Photo | Video tabs)
+
+/// Full-screen container presented from Home.
+/// Tab 0 (default) = Photo camera  |  Tab 1 = Video camera.
+struct ScanDogContainerView: View {
+    var onClose: () -> Void
+
+    @State private var selectedTab: Int = 0
+    // Photo flow
+    @State private var capturedImage: UIImage?
+    @State private var showImagePreview = false
+    // Video flow
+    @State private var recordedVideoURL: URL?
+    @State private var showVideoPreview  = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .top) {
+                // ── Tab pages ─────────────────────────────────────────────
+                TabView(selection: $selectedTab) {
+                    // Photo tab
+                    ScannerView(
+                        onCapture: { image in
+                            capturedImage   = image
+                            showImagePreview = true
+                        },
+                        onClose: onClose
+                    )
+                    .tag(0)
+                    .ignoresSafeArea()
+
+                    // Video tab
+                    VideoScannerView(
+                        onRecordingFinished: { url in
+                            recordedVideoURL  = url
+                            showVideoPreview  = true
+                        },
+                        onClose: onClose
+                    )
+                    .tag(1)
+                    .ignoresSafeArea()
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .ignoresSafeArea()
+
+                // ── Mode Picker overlay ───────────────────────────────────
+                VStack(spacing: 0) {
+                    Picker("Scan Mode", selection: $selectedTab) {
+                        Label("Photo", systemImage: "camera.fill").tag(0)
+                        Label("Video", systemImage: "video.fill").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 72)
+                    .padding(.top, topSafeAreaInset() + 16)
+                }
+            }
+            // ── Navigation destinations ───────────────────────────────────
+            .navigationDestination(isPresented: $showImagePreview) {
+                if let image = capturedImage {
+                    ImagePreviewView(image: image)
+                }
+            }
+            .navigationDestination(isPresented: $showVideoPreview) {
+                if let url = recordedVideoURL {
+                    VideoPreviewView(videoURL: url)
+                }
+            }
+        }
+    }
+
+    private func topSafeAreaInset() -> CGFloat {
+        (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top) ?? 44
+    }
+}
+
+// MARK: - Photo Scanner Representable
+
 struct ScannerView: UIViewControllerRepresentable {
     var onCapture: (UIImage?) -> Void
-    
+    var onClose: (() -> Void)?
+
     func makeUIViewController(context: Context) -> CameraViewController {
         let vc = CameraViewController()
         vc.onCapture = onCapture
+        vc.onClose   = onClose
         return vc
     }
-    
+
     func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {}
 }
+
+// MARK: - Photo Camera UIViewController
 
 class CameraViewController: UIViewController {
     var captureSession: AVCaptureSession!
@@ -19,7 +102,8 @@ class CameraViewController: UIViewController {
     var previewLayer: AVCaptureVideoPreviewLayer!
     var videoDevice: AVCaptureDevice?
     var onCapture: ((UIImage?) -> Void)?
-    
+    var onClose: (() -> Void)?
+
     private var initialZoomFactor: CGFloat = 1.0
     private let zoomLabel = UILabel()
     private var zoomTimer: Timer?
@@ -32,34 +116,45 @@ class CameraViewController: UIViewController {
         setupUI()
         setupGestures()
     }
-    
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        guard let session = captureSession, !session.isRunning else { return }
+        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        captureSession?.stopRunning()
+    }
+
     func setupCamera() {
         captureSession = AVCaptureSession()
         captureSession.sessionPreset = .photo
-        
+
         guard let device = AVCaptureDevice.default(for: .video) else { return }
         self.videoDevice = device
-        
+
         let videoInput: AVCaptureDeviceInput
         do {
             videoInput = try AVCaptureDeviceInput(device: device)
         } catch {
             return
         }
-        
+
         if captureSession.canAddInput(videoInput) {
             captureSession.addInput(videoInput)
         } else {
             return
         }
-        
+
         photoOutput = AVCapturePhotoOutput()
         if captureSession.canAddOutput(photoOutput) {
             captureSession.addOutput(photoOutput)
         } else {
             return
         }
-        
+
         previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         previewLayer.frame = view.bounds
         previewLayer.videoGravity = .resizeAspect
@@ -67,12 +162,12 @@ class CameraViewController: UIViewController {
             setPortraitOrientation(on: connection)
         }
         view.layer.addSublayer(previewLayer)
-        
+
         DispatchQueue.global(qos: .userInitiated).async {
             self.captureSession.startRunning()
         }
     }
-    
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
@@ -92,7 +187,7 @@ class CameraViewController: UIViewController {
             }
         }
     }
-    
+
     func setupUI() {
         // Zoom Label
         zoomLabel.font = .systemFont(ofSize: 13, weight: .bold)
@@ -168,14 +263,14 @@ class CameraViewController: UIViewController {
     // MARK: - Zooming
     @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         guard let device = videoDevice else { return }
-        
+
         if gesture.state == .began {
             initialZoomFactor = device.videoZoomFactor
         }
-        
+
         let maxZoom = min(5.0, device.activeFormat.videoMaxZoomFactor)
         let newZoomFactor = min(max(initialZoomFactor * gesture.scale, 1.0), maxZoom)
-        
+
         do {
             try device.lockForConfiguration()
             device.videoZoomFactor = newZoomFactor
@@ -265,9 +360,14 @@ class CameraViewController: UIViewController {
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
-    
+
     @objc func closeCamera() {
-        dismiss(animated: true)
+        // Delegate close to the SwiftUI parent; fall back to dismiss for standalone use
+        if let close = onClose {
+            close()
+        } else {
+            dismiss(animated: true)
+        }
     }
 }
 
@@ -275,7 +375,7 @@ extension CameraViewController: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let data = photo.fileDataRepresentation(), let image = UIImage(data: data) {
             onCapture?(image)
-            dismiss(animated: true)
+            // Navigation handled by ScanDogContainerView — don't dismiss here
         }
     }
 }

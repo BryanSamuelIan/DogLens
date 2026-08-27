@@ -27,6 +27,10 @@ extension UIImage {
                                       bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
                                       space: colorSpace,
                                       bitmapInfo: bitmapInfo) else { return nil }
+        // Flip Y-axis so CGContext matches CVPixelBuffer top-left origin
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1.0, y: -1.0)
+        
         UIGraphicsPushContext(context)
         self.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
         UIGraphicsPopContext()
@@ -66,6 +70,13 @@ extension UIImage {
         UIImage.sharedCIContext.render(finalImage, to: buffer, bounds: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight), colorSpace: colorSpace)
 
         return buffer
+    }
+
+    // MARK: - Writer-adaptor helper (BGRA, main-thread safe)
+    /// Creates a CVPixelBuffer from the image scaled to the given dimensions.
+    /// Uses the same UIKit graphics context approach as `pixelBuffer(width:height:)`.
+    func toPixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        pixelBuffer(width: width, height: height)
     }
 }
 
