@@ -15,7 +15,7 @@ struct VideoPreviewView: View {
     /// Controls which URL the AVPlayer shows
     @State private var displayedURL: URL
     @State private var player: AVPlayer
-    @State private var showAnnotated = false
+    @State private var showAnnotated = true
 
     init(videoURL: URL) {
         self.videoURL = videoURL
@@ -31,8 +31,8 @@ struct VideoPreviewView: View {
                 // ── Mode Picker (only after inference) ──────────────────
                 if vm.annotatedVideoURL != nil {
                     Picker("View Mode", selection: $showAnnotated) {
-                        Text("Original").tag(false)
                         Text("Detected").tag(true)
+                        Text("Original").tag(false)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
@@ -71,6 +71,12 @@ struct VideoPreviewView: View {
         .onDisappear {
             player.pause()
             player.replaceCurrentItem(with: nil)
+        }
+        .onChange(of: vm.annotatedVideoURL) { _, newURL in
+            if let newURL = newURL {
+                showAnnotated = true
+                switchPlayer(to: newURL)
+            }
         }
         .onChange(of: breeds) { _, newBreeds in vm.breeds = newBreeds }
         .alert("Save Result", isPresented: $vm.showingSaveAlert) {
