@@ -98,19 +98,33 @@ final class ResultViewModel: ObservableObject {
             return
         }
         let annotatedData = annotatedImage?.jpegData(compressionQuality: 0.8)
-        for result in detectionResults {
-            if let breed = breeds.first(where: { $0.name == result.label }) {
+        
+        let validResults = detectionResults.filter { $0.confidence >= 0.7 }
+        let uniqueBreedNames = Array(Set(validResults.map { $0.label }))
+        var savedCount = 0
+        
+        for breedName in uniqueBreedNames {
+            if let breed = breeds.first(where: { $0.name == breedName }) {
+                let maxConf = validResults
+                    .filter { $0.label == breedName }
+                    .map { Double($0.confidence) }
+                    .max() ?? 0.0
+                
                 let breedImage = BreedImage(
                     imageData: originalData,
                     annotatedImageData: annotatedData,
-                    confidence: Double(result.confidence)
+                    isVideo: false,
+                    confidence: maxConf
                 )
                 breed.images.append(breedImage)
+                savedCount += 1
             }
         }
         do {
             try ctx.save()
-            saveMessage = "Saved to Breed Gallery."
+            saveMessage = savedCount > 0
+                ? "Saved to \(savedCount) breed(s) in Gallery."
+                : "No matching breeds found in gallery."
         } catch {
             saveMessage = "Failed to save to gallery."
         }

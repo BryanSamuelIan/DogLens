@@ -422,6 +422,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "\"We need access to your microphone to record video of your dog.\"";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your photos to scan dog images.\"";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -459,6 +460,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera to scan dogs.\"";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "\"We need access to your microphone to record video of your dog.\"";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated images to your library.\"";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your photos to scan dog images.\"";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
