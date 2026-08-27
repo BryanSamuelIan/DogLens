@@ -61,17 +61,25 @@ struct VideoResultView: View {
                             .padding()
                     } else {
                         ForEach(detections, id: \.breedName) { item in
+                            let isHigh = item.confidence >= 0.7
                             HStack {
                                 Text(item.breedName)
                                     .font(.headline)
+                                    .fontWeight(isHigh ? .bold : .regular)
                                 Spacer()
                                 Text(String(format: "%.1f%%", item.confidence * 100))
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .fontWeight(isHigh ? .bold : .regular)
                             }
                             .padding()
-                            .background(Color(.secondarySystemBackground))
+                            .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
                             .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
                         }
                     }
                 }

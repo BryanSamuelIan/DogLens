@@ -51,9 +51,11 @@ struct ImageResultView: View {
                         .fontWeight(.bold)
 
                     ForEach(results) { result in
+                        let isHigh = result.confidence >= 0.7
                         HStack {
                             Text(result.label)
                                 .font(.headline)
+                                .fontWeight(isHigh ? .bold : .regular)
 
                             Spacer()
 
@@ -65,10 +67,16 @@ struct ImageResultView: View {
                             )
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                            .fontWeight(isHigh ? .bold : .regular)
                         }
                         .padding()
-                        .background(Color(.secondarySystemBackground))
+                        .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
                         .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                        )
+                        .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
                     }
                 }
                 .padding(.horizontal)
