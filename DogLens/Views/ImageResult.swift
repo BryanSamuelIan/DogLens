@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ImageResultView: View {
+
     let image: UIImage
     let results: [DetectionResult]
 
@@ -14,12 +15,18 @@ struct ImageResultView: View {
     init(image: UIImage, results: [DetectionResult]) {
         self.image = image
         self.results = results
-        _vm = StateObject(wrappedValue: ResultViewModel(image: image, results: results))
+        _vm = StateObject(
+            wrappedValue: ResultViewModel(
+                image: image,
+                results: results
+            )
+        )
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+
                 // View Mode Picker
                 Picker("View Mode", selection: $vm.showOriginal) {
                     Text("Detection").tag(false)
@@ -38,6 +45,7 @@ struct ImageResultView: View {
 
                 // Detection Results
                 VStack(spacing: 16) {
+
                     Text("\(results.count) Dog(s) Detected")
                         .font(.title2)
                         .fontWeight(.bold)
@@ -46,10 +54,17 @@ struct ImageResultView: View {
                         HStack {
                             Text(result.label)
                                 .font(.headline)
+
                             Spacer()
-                            Text(String(format: "%.1f%%", result.confidence * 100))
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+
+                            Text(
+                                String(
+                                    format: "%.1f%%",
+                                    result.confidence * 100
+                                )
+                            )
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                         }
                         .padding()
                         .background(Color(.secondarySystemBackground))
@@ -60,6 +75,81 @@ struct ImageResultView: View {
 
                 // Actions
                 VStack(spacing: 16) {
+
+                    // Only show Breed Gallery option if
+                    // at least one detection has confidence >= 70%
+                    if results.contains(where: { $0.confidence >= 0.7 }) {
+
+                        VStack(spacing: 6) {
+
+                            if vm.isNewBreed {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sparkles")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+
+                                    Text("New Breed!")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.orange)
+
+                                    Image(systemName: "sparkles")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.12))
+                                .clipShape(Capsule())
+                                .transition(
+                                    .scale.combined(with: .opacity)
+                                )
+                            }
+
+                            Button(action: vm.saveToBreedGallery) {
+                                HStack(spacing: 8) {
+
+                                    if vm.isNewBreed {
+                                        Image(systemName: "star.fill")
+                                            .font(.subheadline)
+                                    }
+
+                                    Text("Save to Breed Gallery")
+                                        .font(.headline)
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(
+                                    vm.isNewBreed
+                                    ? LinearGradient(
+                                        colors: [.orange, .pink],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [.orange, .orange],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(16)
+                                .shadow(
+                                    color: vm.isNewBreed
+                                        ? .orange.opacity(0.5)
+                                        : .clear,
+                                    radius: 8,
+                                    x: 0,
+                                    y: 4
+                                )
+                            }
+                            .animation(
+                                .easeInOut(duration: 0.3),
+                                value: vm.isNewBreed
+                            )
+                        }
+                    }
+
                     Button(action: vm.saveToPhotos) {
                         Text("Save to Photos")
                             .font(.headline)
@@ -68,19 +158,6 @@ struct ImageResultView: View {
                             .padding()
                             .background(Color.blue)
                             .cornerRadius(16)
-                    }
-
-                    // Only show Breed Gallery option if highest confidence is at least 70% (0.7)
-                    if results.contains(where: { $0.confidence >= 0.7 }) {
-                        Button(action: vm.saveToBreedGallery) {
-                            Text("Save to Breed Gallery")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.orange)
-                                .cornerRadius(16)
-                        }
                     }
 
                     Button(action: { dismiss() }) {

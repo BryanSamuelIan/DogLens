@@ -26,6 +26,13 @@ final class ResultViewModel: ObservableObject {
         self.annotatedImage = Self.createAnnotatedImage(from: image, with: results)
     }
 
+    // Returns true if ANY detected breed has never been saved to the gallery before
+    var isNewBreed: Bool {
+        detectionResults.contains { result in
+            breeds.first(where: { $0.name == result.label })?.imageCount == 0
+        }
+    }
+
     // MARK: - Computed Image
     var displayImage: UIImage {
         showOriginal ? originalImage : (annotatedImage ?? originalImage)
