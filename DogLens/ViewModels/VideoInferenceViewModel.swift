@@ -38,6 +38,15 @@ final class VideoInferenceViewModel: ObservableObject {
     // MARK: - All Detected Breeds Across Video
     private(set) var allVideoDetections: [String: Double] = [:] // Breed Name -> Max Confidence
 
+    // Returns true if ANY detected breed (with confidence >= 0.7)
+    // has never been saved to the gallery before
+    var isNewBreed: Bool {
+        allVideoDetections.contains { name, conf in
+            guard conf >= 0.7 else { return false }
+            return breeds.first(where: { $0.name == name })?.imageCount == 0
+        }
+    }
+
     // MARK: - Run Inference
 
     func runInference() async {

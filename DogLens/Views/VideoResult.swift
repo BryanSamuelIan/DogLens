@@ -43,9 +43,13 @@ struct VideoResultView: View {
 
                 // ── Detection Results List ────────────────────────────────
                 VStack(spacing: 16) {
-                    let detections = vm.allVideoDetections
-                        .map { (breedName: $0.key, confidence: $0.value) }
-                        .sorted { $0.confidence > $1.confidence }
+                    let detectionsDict = vm.allVideoDetections
+                    let detectionsArray: [(breedName: String, confidence: Double)] = detectionsDict.map { key, value in
+                        (breedName: key, confidence: value)
+                    }
+                    let detections = detectionsArray.sorted { lhs, rhs in
+                        lhs.confidence > rhs.confidence
+                    }
 
                     Text("\(detections.count) Dog(s) Detected")
                         .font(.title2)
@@ -57,17 +61,25 @@ struct VideoResultView: View {
                             .padding()
                     } else {
                         ForEach(detections, id: \.breedName) { item in
+                            let isHigh = item.confidence >= 0.7
                             HStack {
                                 Text(item.breedName)
                                     .font(.headline)
+                                    .fontWeight(isHigh ? .bold : .regular)
                                 Spacer()
                                 Text(String(format: "%.1f%%", item.confidence * 100))
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .fontWeight(isHigh ? .bold : .regular)
                             }
                             .padding()
-                            .background(Color(.secondarySystemBackground))
+                            .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
                             .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
                         }
                     }
                 }
@@ -75,6 +87,52 @@ struct VideoResultView: View {
 
                 // ── Action Buttons ────────────────────────────────────────
                 VStack(spacing: 16) {
+                    
+                    if vm.isNewBreed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+
+                            Text("New Breed!")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.orange)
+
+                            Image(systemName: "sparkles")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(Capsule())
+                        .transition(
+                            .scale.combined(with: .opacity)
+                        )
+                    }
+                    
+                    
+
+                    // Save to Breed Gallery (Only if highest confidence is at least 70% / 0.7)
+                    if vm.allVideoDetections.values.contains(where: { $0 >= 0.70 }) {
+                        Button(action: vm.saveToBreedGallery) {
+                            HStack {
+                                if vm.isNewBreed {
+                                    Image(systemName: "star.fill")
+                                        .font(.subheadline)
+                                }
+                                Text("Save Video to Breed Gallery")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .cornerRadius(16)
+                        }
+                    }
+                    
                     // Save to Photos
                     Button(action: vm.saveToPhotos) {
                         HStack {
@@ -94,26 +152,10 @@ struct VideoResultView: View {
                     }
                     .disabled(vm.isSavingToPhotos)
 
-                    // Save to Breed Gallery (Only if highest confidence is at least 70% / 0.7)
-                    if vm.allVideoDetections.values.contains(where: { $0 >= 0.70 }) {
-                        Button(action: vm.saveToBreedGallery) {
-                            HStack {
-                                Image(systemName: "photo.on.rectangle.angled")
-                                Text("Save Video to Breed Gallery")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.orange)
-                            .cornerRadius(16)
-                        }
-                    }
-
                     // Scan Again
                     Button {
                         player?.pause()
-                        if let onScanAgain {
+                        if let onScanAgain = onScanAgain {
                             onScanAgain()
                         } else {
                             dismiss()
