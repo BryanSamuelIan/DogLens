@@ -1,60 +1,41 @@
 import SwiftUI
-import AVKit
 import SwiftData
-
-// MARK: - Video Preview View
+import AVKit
 
 struct VideoPreviewView: View {
     let videoURL: URL
+    var onScanAgain: (() -> Void)?
 
-    @StateObject private var vm: VideoInferenceViewModel
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query private var breeds: [DogBreed]
 
-    /// Controls which URL the AVPlayer shows
-    @State private var displayedURL: URL
+    @StateObject private var vm: VideoInferenceViewModel
     @State private var player: AVPlayer
-    @State private var showAnnotated = true
+    @State private var navigateToResult = false
 
-    init(videoURL: URL) {
+    init(videoURL: URL, onScanAgain: (() -> Void)? = nil) {
         self.videoURL = videoURL
+        self.onScanAgain = onScanAgain
         _vm = StateObject(wrappedValue: VideoInferenceViewModel(videoURL: videoURL))
-        _displayedURL = State(initialValue: videoURL)
         _player = State(initialValue: AVPlayer(url: videoURL))
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-
-                // ── Mode Picker (only after inference) ──────────────────
-                if vm.annotatedVideoURL != nil {
-                    Picker("View Mode", selection: $showAnnotated) {
-                        Text("Detected").tag(true)
-                        Text("Original").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .onChange(of: showAnnotated) { _, annotated in
-                        switchPlayer(to: annotated ? vm.annotatedVideoURL! : videoURL)
-                    }
-                }
-
-                // ── Video Player ────────────────────────────────────────
+                // ── Raw Video Player ────────────────────────────────────
                 VideoPlayer(player: player)
                     .frame(height: 360)
                     .cornerRadius(16)
                     .padding(.horizontal)
                     .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
 
-                // ── Inference Controls ──────────────────────────────────
+                // ── Controls ───────────────────────────────────────────
                 if vm.isInferring {
                     inferringView
-                } else if vm.annotatedVideoURL == nil {
-                    detectButton
                 } else {
-                    saveActionsView
+                    detectButton
                 }
 
                 Spacer(minLength: 40)
@@ -63,6 +44,12 @@ struct VideoPreviewView: View {
         }
         .navigationTitle("Video Preview")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $navigateToResult) {
+            VideoResultView(vm: vm, onScanAgain: {
+                player.pause()
+                dismiss()
+            })
+        }
         .onAppear {
             vm.modelContext = modelContext
             vm.breeds = breeds
@@ -73,16 +60,13 @@ struct VideoPreviewView: View {
             player.replaceCurrentItem(with: nil)
         }
         .onChange(of: vm.annotatedVideoURL) { _, newURL in
-            if let newURL = newURL {
-                showAnnotated = true
-                switchPlayer(to: newURL)
+            if newURL != nil {
+                player.pause()
+                navigateToResult = true
             }
         }
-        .onChange(of: breeds) { _, newBreeds in vm.breeds = newBreeds }
-        .alert("Save Result", isPresented: $vm.showingSaveAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(vm.saveMessage)
+        .onChange(of: breeds) { _, newBreeds in
+            vm.breeds = newBreeds
         }
         .alert("Error", isPresented: Binding(
             get: { vm.errorMessage != nil },
@@ -98,22 +82,14 @@ struct VideoPreviewView: View {
 
     private var inferringView: some View {
         VStack(spacing: 16) {
-            Text("Analyzing video…")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            ProgressView(value: vm.progress)
+                .progressViewStyle(.linear)
+                .tint(.orange)
+                .padding(.horizontal)
 
-            ProgressView(value: vm.progress) {
-                Text(String(format: "%.0f%%", vm.progress * 100))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .progressViewStyle(.linear)
-            .tint(.orange)
-            .padding(.horizontal)
-
-            Text("Running CoreML at 15 fps")
+            Text("Running CoreML at 15 fps (\(Int(vm.progress * 100))%)")
                 .font(.caption)
-                .foregroundColor(.secondary.opacity(0.6))
+                .foregroundColor(.secondary.opacity(0.8))
         }
         .padding(.horizontal)
     }
@@ -121,7 +97,9 @@ struct VideoPreviewView: View {
     private var detectButton: some View {
         VStack(spacing: 16) {
             Button {
-                Task { await vm.runInference() }
+                Task {
+                    await vm.runInference()
+                }
             } label: {
                 HStack {
                     Image(systemName: "brain")
@@ -134,6 +112,7 @@ struct VideoPreviewView: View {
                 .background(Color.orange)
                 .cornerRadius(16)
             }
+            .padding(.horizontal)
 
             Button {
                 player.pause()
@@ -145,69 +124,5 @@ struct VideoPreviewView: View {
                     .padding(.vertical, 8)
             }
         }
-        .padding(.horizontal)
-    }
-
-    private var saveActionsView: some View {
-        VStack(spacing: 16) {
-            // Save annotated video to Photos
-            Button {
-                vm.saveToPhotos()
-            } label: {
-                HStack {
-                    if vm.isSavingToPhotos {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-                    Text("Save Video to Photos")
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .cornerRadius(16)
-            }
-            .disabled(vm.isSavingToPhotos)
-
-            // Save best frame to Breed Gallery
-            Button {
-                vm.saveToBreedGallery()
-            } label: {
-                HStack {
-                    Image(systemName: "photo.on.rectangle.angled")
-                    Text("Save Best Frame to Gallery")
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.orange)
-                .cornerRadius(16)
-            }
-
-            // Scan again
-            Button {
-                player.pause()
-                dismiss()
-            } label: {
-                Text("Scan Again")
-                    .font(.subheadline)
-                    .foregroundColor(.orange)
-                    .padding(.vertical, 8)
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    // MARK: - Helpers
-
-    private func switchPlayer(to url: URL) {
-        let wasPlaying = player.rate != 0
-        player.pause()
-        let newPlayer = AVPlayer(url: url)
-        player = newPlayer
-        if wasPlaying { player.play() }
     }
 }

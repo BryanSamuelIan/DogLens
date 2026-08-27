@@ -47,7 +47,7 @@ struct ImagePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $vm.showResult) {
             if let results = vm.detectionResults, !results.isEmpty {
-                ResultView(image: image, results: results)
+                ImageResultView(image: image, results: results)
             }
         }
         .navigationDestination(isPresented: $vm.showNoDetection) {

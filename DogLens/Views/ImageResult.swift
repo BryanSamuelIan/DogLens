@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct ResultView: View {
+struct ImageResultView: View {
     let image: UIImage
     let results: [DetectionResult]
 
@@ -92,7 +92,7 @@ struct ResultView: View {
             }
             .padding(.top, 20)
         }
-        .navigationTitle("Result")
+        .navigationTitle("Image Result")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             vm.modelContext = modelContext
