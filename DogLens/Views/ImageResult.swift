@@ -70,14 +70,17 @@ struct ImageResultView: View {
                             .cornerRadius(16)
                     }
 
-                    Button(action: vm.saveToBreedGallery) {
-                        Text("Save to Breed Gallery")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.orange)
-                            .cornerRadius(16)
+                    // Only show Breed Gallery option if highest confidence is at least 70% (0.7)
+                    if results.contains(where: { $0.confidence >= 0.7 }) {
+                        Button(action: vm.saveToBreedGallery) {
+                            Text("Save to Breed Gallery")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .cornerRadius(16)
+                        }
                     }
 
                     Button(action: { dismiss() }) {

@@ -94,18 +94,20 @@ struct VideoResultView: View {
                     }
                     .disabled(vm.isSavingToPhotos)
 
-                    // Save to Breed Gallery
-                    Button(action: vm.saveToBreedGallery) {
-                        HStack {
-                            Image(systemName: "photo.on.rectangle.angled")
-                            Text("Save Video to Breed Gallery")
+                    // Save to Breed Gallery (Only if highest confidence is at least 70% / 0.7)
+                    if vm.allVideoDetections.values.contains(where: { $0 >= 0.70 }) {
+                        Button(action: vm.saveToBreedGallery) {
+                            HStack {
+                                Image(systemName: "photo.on.rectangle.angled")
+                                Text("Save Video to Breed Gallery")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .cornerRadius(16)
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .cornerRadius(16)
                     }
 
                     // Scan Again

@@ -317,6 +317,7 @@ final class VideoInferenceViewModel: ObservableObject {
         var savedCount = 0
 
         for (breedName, highestConf) in allVideoDetections {
+            guard highestConf >= 0.7 else { continue }
             if let breed = breeds.first(where: { $0.name == breedName }) {
                 let entry = BreedImage(
                     imageData: origThumbData,

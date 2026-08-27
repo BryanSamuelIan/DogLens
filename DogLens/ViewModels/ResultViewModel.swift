@@ -92,12 +92,13 @@ final class ResultViewModel: ObservableObject {
         }
         let annotatedData = annotatedImage?.jpegData(compressionQuality: 0.8)
         
-        let uniqueBreedNames = Array(Set(detectionResults.map { $0.label }))
+        let validResults = detectionResults.filter { $0.confidence >= 0.7 }
+        let uniqueBreedNames = Array(Set(validResults.map { $0.label }))
         var savedCount = 0
         
         for breedName in uniqueBreedNames {
             if let breed = breeds.first(where: { $0.name == breedName }) {
-                let maxConf = detectionResults
+                let maxConf = validResults
                     .filter { $0.label == breedName }
                     .map { Double($0.confidence) }
                     .max() ?? 0.0
