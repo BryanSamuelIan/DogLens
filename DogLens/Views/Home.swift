@@ -103,11 +103,21 @@ struct HomeView: View {
                     ImagePreviewView(image: image)
                 }
             }
+            .onChange(of: vm.showPreview) { _, isPresented in
+                if !isPresented {
+                    vm.resetPhotoState()
+                }
+            }
 
             // ── Navigation: Video upload → VideoPreviewView ───────────────
             .navigationDestination(isPresented: $vm.showVideoPreview) {
                 if let url = vm.selectedVideoURL {
                     VideoPreviewView(videoURL: url)
+                }
+            }
+            .onChange(of: vm.showVideoPreview) { _, isPresented in
+                if !isPresented {
+                    vm.resetVideoState()
                 }
             }
 

@@ -53,11 +53,13 @@ struct VideoPreviewView: View {
         .onAppear {
             vm.modelContext = modelContext
             vm.breeds = breeds
+            if player.currentItem == nil {
+                player = AVPlayer(url: videoURL)
+            }
             player.play()
         }
         .onDisappear {
             player.pause()
-            player.replaceCurrentItem(with: nil)
         }
         .onChange(of: vm.annotatedVideoURL) { _, newURL in
             if newURL != nil {

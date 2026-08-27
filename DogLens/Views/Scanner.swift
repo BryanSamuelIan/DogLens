@@ -132,16 +132,36 @@ class CameraViewController: UIViewController {
     func setActive(_ active: Bool) {
         guard self.isActive != active else { return }
         self.isActive = active
-        sessionQueue.async { [weak self] in
-            guard let self = self, let session = self.captureSession else { return }
-            if active {
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            } else {
-                if session.isRunning {
-                    session.stopRunning()
-                }
+        if active {
+            startCameraSession()
+        } else {
+            stopCameraSession()
+        }
+    }
+
+    private func startCameraSession() {
+        guard isActive else { return }
+        if previewLayer?.session == nil {
+            previewLayer?.session = captureSession
+        }
+        if previewLayer?.superlayer == nil, let previewLayer = previewLayer {
+            view.layer.insertSublayer(previewLayer, at: 0)
+        }
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == false {
+                session?.startRunning()
+            }
+        }
+    }
+
+    private func stopCameraSession() {
+        previewLayer?.removeFromSuperlayer()
+        previewLayer?.session = nil
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == true {
+                session?.stopRunning()
             }
         }
     }
@@ -156,39 +176,26 @@ class CameraViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if isActive {
-            sessionQueue.async { [weak self] in
-                guard let self = self, let session = self.captureSession else { return }
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            }
-        }
+        startCameraSession()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if isActive {
-            sessionQueue.async { [weak self] in
-                guard let self = self, let session = self.captureSession else { return }
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            }
-        }
+        startCameraSession()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        sessionQueue.async { [weak self] in
-            self?.captureSession?.stopRunning()
-        }
+        stopCameraSession()
     }
 
     deinit {
         zoomTimer?.invalidate()
-        sessionQueue.async { [weak self] in
-            self?.captureSession?.stopRunning()
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == true {
+                session?.stopRunning()
+            }
         }
     }
 
@@ -426,7 +433,7 @@ class CameraViewController: UIViewController {
     }
 
     @objc func closeCamera() {
-        // Delegate close to the SwiftUI parent; fall back to dismiss for standalone use
+        stopCameraSession()
         if let close = onClose {
             close()
         } else {

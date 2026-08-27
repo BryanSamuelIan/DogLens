@@ -147,4 +147,19 @@ final class HomeViewModel: ObservableObject {
             selectedVideoItem   = nil
         }
     }
+
+    // MARK: - State Reset Helpers
+
+    func resetPhotoState() {
+        selectedPhotoItem = nil
+        selectedImage = nil
+        showPreview = false
+    }
+
+    func resetVideoState() {
+        selectedVideoItem = nil
+        selectedVideoURL = nil
+        showVideoPreview = false
+        isLoadingVideo = false
+    }
 }

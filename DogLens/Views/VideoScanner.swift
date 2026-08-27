@@ -57,19 +57,39 @@ class VideoCameraViewController: UIViewController {
     func setActive(_ active: Bool) {
         guard self.isActive != active else { return }
         self.isActive = active
-        if !active && isRecording {
+        if active {
+            startCameraSession()
+        } else {
+            stopCameraSession()
+        }
+    }
+
+    private func startCameraSession() {
+        guard isActive else { return }
+        if previewLayer?.session == nil {
+            previewLayer?.session = captureSession
+        }
+        if previewLayer?.superlayer == nil, let previewLayer = previewLayer {
+            view.layer.insertSublayer(previewLayer, at: 0)
+        }
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == false {
+                session?.startRunning()
+            }
+        }
+    }
+
+    private func stopCameraSession() {
+        if isRecording {
             stopRecording()
         }
-        sessionQueue.async { [weak self] in
-            guard let self = self, let session = self.captureSession else { return }
-            if active {
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            } else {
-                if session.isRunning {
-                    session.stopRunning()
-                }
+        previewLayer?.removeFromSuperlayer()
+        previewLayer?.session = nil
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == true {
+                session?.stopRunning()
             }
         }
     }
@@ -99,46 +119,27 @@ class VideoCameraViewController: UIViewController {
             setPortraitOrientation(on: conn)
         }
         
-        if isActive {
-            sessionQueue.async { [weak self] in
-                guard let self = self, let session = self.captureSession else { return }
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            }
-        }
+        startCameraSession()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if isActive {
-            sessionQueue.async { [weak self] in
-                guard let self = self, let session = self.captureSession else { return }
-                if !session.isRunning {
-                    session.startRunning()
-                }
-            }
-        }
+        startCameraSession()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if isRecording {
-            stopRecording()
-        }
-        // Only stop capture session if container is dismissing or being popped
-        if isBeingDismissed || isMovingFromParent {
-            sessionQueue.async { [weak self] in
-                self?.captureSession?.stopRunning()
-            }
-        }
+        stopCameraSession()
     }
 
     deinit {
         recordingTimer?.invalidate()
         zoomTimer?.invalidate()
-        sessionQueue.async { [weak self] in
-            self?.captureSession?.stopRunning()
+        let session = captureSession
+        sessionQueue.async {
+            if session?.isRunning == true {
+                session?.stopRunning()
+            }
         }
     }
 
@@ -296,12 +297,7 @@ class VideoCameraViewController: UIViewController {
     // MARK: - Actions
 
     @objc func closeTapped() {
-        if isRecording {
-            stopRecording()
-        }
-        sessionQueue.async { [weak self] in
-            self?.captureSession?.stopRunning()
-        }
+        stopCameraSession()
         onClose?()
     }
 
