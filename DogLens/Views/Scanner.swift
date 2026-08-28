@@ -44,6 +44,14 @@ struct ScanDogContainerView: View {
                     )
                     .tag(1)
                     .ignoresSafeArea()
+
+                    // Live tab
+                    LiveScannerView(
+                        isActive: selectedTab == 2,
+                        onClose: onClose
+                    )
+                    .tag(2)
+                    .ignoresSafeArea()
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .ignoresSafeArea()
@@ -53,6 +61,7 @@ struct ScanDogContainerView: View {
                     Picker("Scan Mode", selection: $selectedTab) {
                         Label("Photo", systemImage: "camera.fill").tag(0)
                         Label("Video", systemImage: "video.fill").tag(1)
+                        Label("Live", systemImage: "play.circle.fill").tag(2)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 72)
