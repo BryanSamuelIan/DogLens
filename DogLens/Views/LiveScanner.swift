@@ -5,18 +5,22 @@ import AVFoundation
 
 struct LiveScannerView: UIViewControllerRepresentable {
     var isActive: Bool
+    @ObservedObject var viewModel: LiveScannerViewModel
     var onClose: () -> Void
 
     func makeUIViewController(context: Context) -> LiveCameraViewController {
         let vc = LiveCameraViewController()
+        vc.viewModel = viewModel
         vc.onClose = onClose
         vc.setActive(isActive)
         return vc
     }
 
     func updateUIViewController(_ uiViewController: LiveCameraViewController, context: Context) {
+        uiViewController.viewModel = viewModel
         uiViewController.onClose = onClose
         uiViewController.setActive(isActive)
+        uiViewController.updateDetections(viewModel.detectionResults)
     }
 }
 
@@ -31,7 +35,8 @@ class LiveCameraViewController: UIViewController {
     private let sessionQueue = DispatchQueue(label: "com.doglens.liveSessionQueue")
     private(set) var isActive: Bool = true
 
-    // MARK: Callbacks
+    // MARK: ViewModel
+    weak var viewModel: LiveScannerViewModel?
     var onClose: (() -> Void)?
 
     // MARK: State
@@ -47,7 +52,7 @@ class LiveCameraViewController: UIViewController {
     private var lastInferenceTime = Date.distantPast
     private let inferenceInterval: TimeInterval = 1.0 / 15.0
     
-    private let queueLock = NSLock()
+    // Serialized state variable only accessed on `videoDataOutputQueue`
     private var isProcessingLiveFrame = false
 
     // MARK: UI Elements
@@ -191,7 +196,7 @@ class LiveCameraViewController: UIViewController {
         if let conn = previewLayer.connection { setPortraitOrientation(on: conn) }
         view.layer.addSublayer(previewLayer)
 
-        // Bounding Box Container (placed right above preview layer but below UI buttons)
+        // Bounding Box Container
         let container = UIView(frame: view.bounds)
         container.backgroundColor = .clear
         container.isUserInteractionEnabled = false
@@ -212,7 +217,7 @@ class LiveCameraViewController: UIViewController {
     // MARK: - UI Setup
 
     func setupUI() {
-        // ── Close button ──────────────────────────────────────────────
+        // Close button
         let xConfig = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: xConfig), for: .normal)
         closeButton.tintColor = .white
@@ -223,7 +228,7 @@ class LiveCameraViewController: UIViewController {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(closeButton)
 
-        // ── Zoom label ────────────────────────────────────────────────
+        // Zoom label
         zoomLabel.font = .systemFont(ofSize: 13, weight: .bold)
         zoomLabel.textColor = .white
         zoomLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
@@ -234,7 +239,7 @@ class LiveCameraViewController: UIViewController {
         zoomLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(zoomLabel)
 
-        // ── Layout ───────────────────────────────────────────────────
+        // Layout
         NSLayoutConstraint.activate([
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 26),
             closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
@@ -343,17 +348,19 @@ class LiveCameraViewController: UIViewController {
         )
     }
 
-    // MARK: - Drawing Bounding Boxes
+    // MARK: - Update Detections
     
-    private func drawBoundingBoxes(_ results: [DetectionResult], originalSize: CGSize) {
+    func updateDetections(_ results: [DetectionResult]) {
         guard let container = boundingBoxContainerView else { return }
         
         container.subviews.forEach { $0.removeFromSuperview() }
         
         let viewSize = container.bounds.size
+        // Assume default model dimension coordinates mapped relative to standard HD resolution (720x1280 portrait)
+        let imageSize = CGSize(width: 720, height: 1280)
         
         for result in results {
-            let viewRect = convertRect(result.boundingBox, fromImageOfSize: originalSize, toViewOfSize: viewSize)
+            let viewRect = convertRect(result.boundingBox, fromImageOfSize: imageSize, toViewOfSize: viewSize)
             
             let boxView = UIView(frame: viewRect)
             boxView.layer.borderColor = UIColor.orange.cgColor
@@ -373,7 +380,6 @@ class LiveCameraViewController: UIViewController {
             let labelWidth = label.frame.width + 8
             let labelHeight = label.frame.height + 4
             
-            // Check if label fits above the box
             if viewRect.origin.y >= labelHeight + 6 {
                 label.frame = CGRect(x: 0, y: -labelHeight, width: labelWidth, height: labelHeight)
             } else {
@@ -395,38 +401,34 @@ extension LiveCameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate
         let now = Date()
         guard now.timeIntervalSince(lastInferenceTime) >= inferenceInterval else { return }
         
-        queueLock.lock()
-        if isProcessingLiveFrame {
-            queueLock.unlock()
-            return
-        }
+        // Serialized check
+        if isProcessingLiveFrame { return }
         isProcessingLiveFrame = true
-        queueLock.unlock()
         
         lastInferenceTime = now
         
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            isProcessingLiveFrame = false
+            return
+        }
+        
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+            isProcessingLiveFrame = false
+            return
+        }
+        let image = UIImage(cgImage: cgImage)
+        
         Task {
             defer {
-                queueLock.lock()
-                isProcessingLiveFrame = false
-                queueLock.unlock()
+                // Thread-safe dispatch back to serial queue
+                videoDataOutputQueue.async { [weak self] in
+                    self?.isProcessingLiveFrame = false
+                }
             }
             
-            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-            
-            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
-            let image = UIImage(cgImage: cgImage)
-            
-            do {
-                let results = try await ModelService.shared.detectDogs(in: image)
-                await MainActor.run {
-                    if self.isActive {
-                        self.drawBoundingBoxes(results, originalSize: image.size)
-                    }
-                }
-            } catch {
-                print("Live inference error: \(error)")
+            if let viewModel = self.viewModel {
+                await viewModel.processFrame(image)
             }
         }
     }
