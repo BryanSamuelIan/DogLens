@@ -163,7 +163,8 @@ final class AuthManager: ObservableObject {
     
     func checkiCloudStatus() async {
         do {
-            let status = try await CKContainer.default().accountStatus()
+            let container = CKContainer(identifier: "iCloud.DogLens")
+            let status = try await container.accountStatus()
             self.iCloudStatus = status
         } catch {
             self.iCloudStatus = .couldNotDetermine

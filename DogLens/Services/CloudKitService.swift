@@ -34,7 +34,10 @@ final class CloudKitService: ObservableObject {
     static let shared = CloudKitService()
     
     // CloudKit configuration
-    private let container = CKContainer.default()
+    private let container: CKContainer = {
+        let identifier = "iCloud.DogLens"
+        return CKContainer(identifier: identifier)
+    }()
     private var database: CKDatabase {
         container.privateCloudDatabase
     }
