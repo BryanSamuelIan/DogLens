@@ -38,11 +38,25 @@ struct BreedGalleryView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding()
                 }
+            }
+            .refreshable {
+                await CloudKitService.shared.syncWithLocalDatabase(modelContext: modelContext)
+                await CloudKitService.shared.refreshCloudItemCount()
             }
             .navigationTitle("Breed Gallery")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "icloud.fill")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        Text(CloudKitService.shared.syncState.displayText)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 4) {
                         Image(systemName: "pawprint.fill")
@@ -65,6 +79,8 @@ struct BreedGalleryView: View {
             .background(Color(.systemGroupedBackground))
         }
     }
+    
+    @Environment(\.modelContext) private var modelContext
 }
 
 struct BreedCard: View {

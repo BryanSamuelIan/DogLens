@@ -336,7 +336,6 @@ final class VideoInferenceViewModel: ObservableObject {
         let annotatedThumbData = (bestAnnotatedFrame ?? originalThumb).jpegData(compressionQuality: 0.8)
 
         var savedCount = 0
-
         for (breedName, highestConf) in allVideoDetections {
             guard highestConf >= 0.7 else { continue }
             if let breed = breeds.first(where: { $0.name == breedName }) {
@@ -350,6 +349,13 @@ final class VideoInferenceViewModel: ObservableObject {
                 )
                 breed.images.append(entry)
                 savedCount += 1
+
+                // Backup to iCloud in background
+                let savedEntry = entry
+                let bName = breedName
+                Task {
+                    _ = try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedEntry, breedName: bName)
+                }
             }
         }
 

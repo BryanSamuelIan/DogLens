@@ -132,8 +132,22 @@ struct HomeView: View {
             } message: {
                 Text(vm.permissionMessage)
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showProfileSheet = true }) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.title3)
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileSheetView()
+            }
         }
     }
+    
+    @State private var showProfileSheet = false
 }
 
 #Preview {

@@ -8,19 +8,30 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var authManager = AuthManager.shared
+    @StateObject private var cloudService = CloudKitService.shared
+    
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "house")
+        Group {
+            if authManager.isAuthenticated || authManager.isGuest {
+                TabView {
+                    HomeView()
+                        .tabItem {
+                            Label("Home", systemImage: "house")
+                        }
+                    
+                    BreedGalleryView()
+                        .tabItem {
+                            Label("Gallery", systemImage: "photo.on.rectangle")
+                        }
                 }
-            
-            BreedGalleryView()
-                .tabItem {
-                    Label("Gallery", systemImage: "photo.on.rectangle")
-                }
+                .tint(.orange)
+            } else {
+                LoginView()
+            }
         }
-        .tint(.orange) // Theme color
+        .environmentObject(authManager)
+        .environmentObject(cloudService)
     }
 }
 
