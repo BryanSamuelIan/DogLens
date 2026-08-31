@@ -17,6 +17,7 @@ final class VideoInferenceViewModel: ObservableObject {
     @Published var showingSaveAlert  = false
     @Published var saveMessage       = ""
     @Published var isSavingToPhotos  = false
+    @Published var trackedDogs: [TrackedDogSummary] = []
 
     // MARK: - Best Frame (for Breed Gallery)
     private(set) var bestAnnotatedFrame: UIImage?
@@ -57,6 +58,7 @@ final class VideoInferenceViewModel: ObservableObject {
         bestOriginalFrame  = nil
         bestFrameResults   = []
         allVideoDetections = [:]
+        trackedDogs        = []
 
         do {
             let url = try await processVideo()
@@ -113,35 +115,40 @@ final class VideoInferenceViewModel: ObservableObject {
                           userInfo: [NSLocalizedDescriptionKey: "Could not extract any frames."])
         }
 
-        // Run CoreML inference at 15 fps
+        // Initialize Multi-Object Tracker with calibrated parameters
+        let tracker = DogTracker(iouThreshold: 0.25, maxLostFrames: 15, baseDetectionThreshold: 0.30)
+
+        // Run CoreML inference at 15 fps and track dogs across frames
         var annotatedFrames: [(UIImage, CMTime)] = []
         var bestConf: Float = 0
 
         for (i, (frame, time)) in rawFrames.enumerated() {
-            let results = (try? await ModelService.shared.detectDogs(in: frame)) ?? []
-            let annotated = Self.annotate(image: frame, results: results)
+            let rawResults = (try? await ModelService.shared.detectDogs(in: frame)) ?? []
+            let trackedResults = tracker.processFrame(detections: rawResults, frameIndex: i)
+            let annotated = Self.annotate(image: frame, results: trackedResults)
             annotatedFrames.append((annotated, time))
 
-            // Record all detected breeds across all frames
-            for result in results {
-                let conf = Double(result.confidence)
-                if let existing = allVideoDetections[result.label] {
-                    allVideoDetections[result.label] = max(existing, conf)
-                } else {
-                    allVideoDetections[result.label] = conf
-                }
-            }
-
-            // Track best frame
-            if let top = results.max(by: { $0.confidence < $1.confidence }), top.confidence > bestConf {
+            // Track best frame based on raw detection quality
+            if let top = rawResults.max(by: { $0.confidence < $1.confidence }), top.confidence > bestConf {
                 bestConf             = top.confidence
                 bestAnnotatedFrame   = annotated
                 bestOriginalFrame    = frame
-                bestFrameResults     = results
+                bestFrameResults     = trackedResults
             }
 
             await MainActor.run { self.progress = 0.4 + Double(i + 1) / Double(rawFrames.count) * 0.4 }
         }
+
+        // Collect consolidated detections for all unique dogs across the video
+        // (Merges tracks of the same breed that disappeared and reappeared at different times)
+        let minFrames = rawFrames.count > 5 ? 2 : 1
+        let consolidatedSummaries = tracker.getConsolidatedSummaries(minFrames: minFrames, highConfidenceThreshold: 0.70)
+        
+        for summary in consolidatedSummaries {
+            let existing = allVideoDetections[summary.breedName] ?? 0.0
+            allVideoDetections[summary.breedName] = max(existing, summary.confidence)
+        }
+        self.trackedDogs = consolidatedSummaries
 
         // Write annotated video
         let outputURL = try await writeVideo(frames: annotatedFrames)
@@ -166,7 +173,12 @@ final class VideoInferenceViewModel: ObservableObject {
         for result in results {
             ctx.stroke(result.boundingBox)
 
-            let text = String(format: "%@ %.0f%%", result.label, result.confidence * 100)
+            let text: String
+            if result.confidence > 0 {
+                text = String(format: "%@ %.0f%%", result.label, result.confidence * 100)
+            } else {
+                text = result.label
+            }
             let fontSize: CGFloat = max(14.0, size.width / 45.0)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font:            UIFont.boldSystemFont(ofSize: fontSize),

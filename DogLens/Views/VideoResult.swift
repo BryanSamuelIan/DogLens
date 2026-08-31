@@ -43,23 +43,55 @@ struct VideoResultView: View {
 
                 // ── Detection Results List ────────────────────────────────
                 VStack(spacing: 16) {
-                    let detectionsDict = vm.allVideoDetections
-                    let detectionsArray: [(breedName: String, confidence: Double)] = detectionsDict.map { key, value in
-                        (breedName: key, confidence: value)
-                    }
-                    let detections = detectionsArray.sorted { lhs, rhs in
-                        lhs.confidence > rhs.confidence
-                    }
+                    let dogs = vm.trackedDogs
+                    let count = dogs.isEmpty ? vm.allVideoDetections.count : dogs.count
 
-                    Text("\(detections.count) Dog(s) Detected")
+                    Text("\(count) Dog(s) Detected")
                         .font(.title2)
                         .fontWeight(.bold)
 
-                    if detections.isEmpty {
+                    if count == 0 {
                         Text("No dog breeds detected in video.")
                             .foregroundColor(.secondary)
                             .padding()
+                    } else if !dogs.isEmpty {
+                        ForEach(dogs) { dog in
+                            let isHigh = dog.isHighConfidence
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(dog.displayName)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .fontWeight(.semibold)
+                                    Text(dog.breedName)
+                                        .font(.headline)
+                                        .fontWeight(isHigh ? .bold : .regular)
+                                }
+                                Spacer()
+                                if dog.confidence > 0 {
+                                    Text(String(format: "%.1f%%", dog.confidence * 100))
+                                        .font(.subheadline)
+                                        .foregroundColor(isHigh ? .primary : .secondary)
+                                        .fontWeight(isHigh ? .bold : .regular)
+                                }
+                            }
+                            .padding()
+                            .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
+                        }
                     } else {
+                        let detectionsArray: [(breedName: String, confidence: Double)] = vm.allVideoDetections.map { key, value in
+                            (breedName: key, confidence: value)
+                        }
+                        let detections = detectionsArray.sorted { lhs, rhs in
+                            lhs.confidence > rhs.confidence
+                        }
+
                         ForEach(detections, id: \.breedName) { item in
                             let isHigh = item.confidence >= 0.7
                             HStack {
