@@ -1,0 +1,91 @@
+[
+  {
+    "shortDescription" : "Ultralytics YOLO11n model trained on yolo_dataset\/data.yaml",
+    "metadataOutputVersion" : "3.0",
+    "outputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32 1 × 56 × 3549)",
+        "shortDescription" : "",
+        "shape" : "[1, 56, 3549]",
+        "name" : "var_1223",
+        "type" : "MultiArray"
+      }
+    ],
+    "version" : "8.4.123",
+    "modelParameters" : [
+
+    ],
+    "author" : "Ultralytics",
+    "specificationVersion" : 6,
+    "storagePrecision" : "Float32",
+    "license" : "AGPL-3.0 License (https:\/\/ultralytics.com\/license)",
+    "mlProgramOperationTypeHistogram" : {
+      "Concat" : 21,
+      "Silu" : 76,
+      "Sub" : 2,
+      "Transpose" : 1,
+      "Matmul" : 2,
+      "UpsampleNearestNeighbor" : 2,
+      "Softmax" : 2,
+      "Mul" : 4,
+      "Reshape" : 11,
+      "MaxPool" : 3,
+      "Add" : 16,
+      "Sigmoid" : 1,
+      "Split" : 11,
+      "Conv" : 88
+    },
+    "computePrecision" : "Mixed (Float32, Int32)",
+    "stateSchema" : [
+
+    ],
+    "isUpdatable" : "0",
+    "availability" : {
+      "macOS" : "12.0",
+      "tvOS" : "15.0",
+      "visionOS" : "1.0",
+      "watchOS" : "8.0",
+      "iOS" : "15.0",
+      "macCatalyst" : "15.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_mlProgram"
+    },
+    "inputSchema" : [
+      {
+        "height" : "416",
+        "colorspace" : "RGB",
+        "isOptional" : "0",
+        "width" : "416",
+        "isColor" : "1",
+        "formattedType" : "Image (Color 416 × 416)",
+        "hasSizeFlexibility" : "0",
+        "type" : "Image",
+        "shortDescription" : "",
+        "name" : "image"
+      }
+    ],
+    "userDefinedMetadata" : {
+      "batch" : "1",
+      "head" : "Detect",
+      "com.github.apple.coremltools.version" : "9.0",
+      "docs" : "https:\/\/docs.ultralytics.com",
+      "imgsz" : "[416, 416]",
+      "names" : "{0: 'Afghan_hound', 1: 'Bernese_mountain_dog', 2: 'Border_collie', 3: 'Border_terrier', 4: 'Chihuahua', 5: 'Doberman', 6: 'French_bulldog', 7: 'German_shepherd', 8: 'Great_Dane', 9: 'Greater_Swiss_Mountain_dog', 10: 'Italian_greyhound', 11: 'Labrador_retriever', 12: 'Maltese_dog', 13: 'Mexican_hairless', 14: 'Newfoundland', 15: 'Norfolk_terrier', 16: 'Norwegian_elkhound', 17: 'Old_English_sheepdog', 18: 'Pekinese', 19: 'Pembroke', 20: 'Pomeranian', 21: 'Rottweiler', 22: 'Saint_Bernard', 23: 'Samoyed', 24: 'Scottish_deerhound', 25: 'Shih-Tzu', 26: 'Siberian_husky', 27: 'Staffordshire_bullterrier', 28: 'Tibetan_mastiff', 29: 'Yorkshire_terrier', 30: 'basset', 31: 'beagle', 32: 'bloodhound', 33: 'borzoi', 34: 'boxer', 35: 'bull_mastiff', 36: 'chow', 37: 'cocker_spaniel', 38: 'collie', 39: 'golden_retriever', 40: 'malamute', 41: 'malinois', 42: 'miniature_pinscher', 43: 'miniature_poodle', 44: 'miniature_schnauzer', 45: 'papillon', 46: 'pug', 47: 'standard_poodle', 48: 'standard_schnauzer', 49: 'toy_poodle', 50: 'toy_terrier', 51: 'wire-haired_fox_terrier'}",
+      "com.github.apple.coremltools.conversion_date" : "2026-08-24",
+      "channels" : "3",
+      "stride" : "32",
+      "date" : "2026-08-24T23:15:41.804206+07:00",
+      "args" : "{'batch': 1, 'quantize': None, 'dynamic': False, 'nms': False}",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript",
+      "com.github.apple.coremltools.source" : "torch==2.13.0",
+      "task" : "detect",
+      "end2end" : "False"
+    },
+    "generatedClassName" : "DogLensImagev2",
+    "method" : "predict"
+  }
+]

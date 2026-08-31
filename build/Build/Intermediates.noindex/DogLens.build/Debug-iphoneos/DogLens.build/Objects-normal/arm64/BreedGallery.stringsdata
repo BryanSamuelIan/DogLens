@@ -1,0 +1,80 @@
+{
+  "source": "/Users/bryansamuel/ADA/DogLens/DogLens/Views/BreedGallery.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Breed Gallery",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search breeds",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Breeds Found",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 24
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Results",
+        "location": {
+          "startingColumn": 69,
+          "startingLine": 24
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dog breeds haven't been loaded yet.",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "No breeds match \"%@\".",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 29
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld/%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 51
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unlocked",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld Images",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 98
+        }
+      }
+    ]
+  },
+  "version": 1
+}

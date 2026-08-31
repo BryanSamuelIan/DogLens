@@ -1,0 +1,24 @@
+{
+  "source": "/Users/bryansamuel/ADA/DogLens/DogLens/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Home",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 15
+        }
+      },
+      {
+        "comment": "",
+        "key": "Gallery",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 20
+        }
+      }
+    ]
+  },
+  "version": 1
+}

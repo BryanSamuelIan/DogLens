@@ -1,0 +1,23 @@
+{
+  "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/DerivedSources/CoreMLGenerated/DogLensImage/DogLensImage.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImage.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImage.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImage.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImage.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImage.swiftdeps"
+  },
+  "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/DerivedSources/CoreMLGenerated/DogLensImagev2/DogLensImagev2.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImagev2.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImagev2.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImagev2.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImagev2.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/DogLensImagev2.swiftdeps"
+  },
+  "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps"
+  }
+}

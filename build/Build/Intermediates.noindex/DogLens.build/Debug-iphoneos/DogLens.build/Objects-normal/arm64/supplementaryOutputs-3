@@ -1,0 +1,23 @@
+{
+  "/Users/bryansamuel/ADA/DogLens/DogLens/ViewModels/BreedGalleryViewModel.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/BreedGalleryViewModel.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/BreedGalleryViewModel.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/BreedGalleryViewModel.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/BreedGalleryViewModel.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/BreedGalleryViewModel.swiftdeps"
+  },
+  "/Users/bryansamuel/ADA/DogLens/DogLens/ViewModels/HomeViewModel.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/HomeViewModel.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/HomeViewModel.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/HomeViewModel.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/HomeViewModel.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/HomeViewModel.swiftdeps"
+  },
+  "/Users/bryansamuel/ADA/DogLens/DogLens/ViewModels/LiveScannerViewModel.swift" : {
+    "const-values" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/LiveScannerViewModel.swiftconstvalues",
+    "dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/LiveScannerViewModel.d",
+    "diagnostics" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/LiveScannerViewModel.dia",
+    "object" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/LiveScannerViewModel.o",
+    "swift-dependencies" : "/Users/bryansamuel/ADA/DogLens/build/Build/Intermediates.noindex/DogLens.build/Debug-iphoneos/DogLens.build/Objects-normal/arm64/LiveScannerViewModel.swiftdeps"
+  }
+}
