@@ -118,6 +118,13 @@ final class ResultViewModel: ObservableObject {
                 )
                 breed.images.append(breedImage)
                 savedCount += 1
+
+                // Backup to iCloud in background
+                let savedImage = breedImage
+                let bName = breedName
+                Task {
+                    _ = try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedImage, breedName: bName)
+                }
             }
         }
         do {
