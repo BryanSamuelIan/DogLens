@@ -119,41 +119,165 @@ struct BreedGalleryView: View {
 struct BreedCard: View {
     let breed: DogBreed
 
+    private var photoCount: Int {
+        breed.images.filter { !$0.isVideo }.count
+    }
+    
+    private var videoCount: Int {
+        breed.images.filter { $0.isVideo }.count
+    }
+
+    private var countSubtitle: String {
+        if breed.images.isEmpty {
+            return "0 Items"
+        } else if videoCount == 0 {
+            return "\(photoCount) Photo\(photoCount == 1 ? "" : "s")"
+        } else if photoCount == 0 {
+            return "\(videoCount) Video\(videoCount == 1 ? "" : "s")"
+        } else {
+            return "\(photoCount) Photo\(photoCount == 1 ? "" : "s") • \(videoCount) Video\(videoCount == 1 ? "" : "s")"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Thumbnail
-            ZStack {
-                Color.gray.opacity(0.2)
-                if let firstImage = breed.images.first,
-                   let uiImage = UIImage(data: firstImage.imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: "photo")
-                        .font(.largeTitle)
-                        .foregroundColor(.gray)
-                }
-            }
-            .frame(height: 120)
-            .clipped()
+            // Thumbnail / Mini Grid Preview
+            thumbnailView
+                .aspectRatio(4/3, contentMode: .fit)
+                .clipped()
 
             // Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(breed.name)
                     .font(.headline)
                     .lineLimit(1)
+                    .foregroundColor(.primary)
 
-                Text("\(breed.imageCount) Images")
-                    .font(.subheadline)
+                Text(countSubtitle)
+                    .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground))
         }
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 3)
+    }
+
+    @ViewBuilder
+    private var thumbnailView: some View {
+        if breed.images.isEmpty {
+            Color.gray.opacity(0.12)
+                .overlay {
+                    Image(systemName: "photo")
+                        .font(.title)
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+        } else if breed.images.count == 1, let first = breed.images.first {
+            singleThumbnail(first)
+        } else if breed.images.count == 2 {
+            twoItemGrid
+        } else {
+            multiItemCollage
+        }
+    }
+
+    @ViewBuilder
+    private func singleThumbnail(_ item: BreedImage) -> some View {
+        Color.gray.opacity(0.12)
+            .overlay {
+                if let uiImage = UIImage(data: item.imageData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                }
+            }
+            .clipped()
+            .overlay(alignment: .bottomTrailing) {
+                if item.isVideo {
+                    videoBadge
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var twoItemGrid: some View {
+        HStack(spacing: 1.5) {
+            ForEach(breed.images.prefix(2)) { item in
+                Color.gray.opacity(0.12)
+                    .overlay {
+                        if let uiImage = UIImage(data: item.imageData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    }
+                    .clipped()
+                    .overlay(alignment: .bottomTrailing) {
+                        if item.isVideo {
+                            videoBadge
+                        }
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var multiItemCollage: some View {
+        let items = Array(breed.images.prefix(4))
+        HStack(spacing: 1.5) {
+            // Main left item
+            if let first = items.first {
+                Color.gray.opacity(0.12)
+                    .overlay {
+                        if let uiImage = UIImage(data: first.imageData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    }
+                    .clipped()
+                    .overlay(alignment: .bottomTrailing) {
+                        if first.isVideo {
+                            videoBadge
+                        }
+                    }
+            }
+
+            // Right side stacked items
+            if items.count > 1 {
+                VStack(spacing: 1.5) {
+                    ForEach(Array(items.dropFirst().prefix(2))) { item in
+                        Color.gray.opacity(0.12)
+                            .overlay {
+                                if let uiImage = UIImage(data: item.imageData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                }
+                            }
+                            .clipped()
+                            .overlay(alignment: .bottomTrailing) {
+                                if item.isVideo {
+                                    videoBadge
+                                }
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    private var videoBadge: some View {
+        Image(systemName: "video.fill")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .background(.black.opacity(0.65), in: Capsule())
+            .padding(4)
     }
 }
 
