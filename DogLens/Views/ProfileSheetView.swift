@@ -10,7 +10,6 @@ struct ProfileSheetView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    @State private var showLoginModal = false
     @State private var isManualSyncing = false
     @State private var showEditNameAlert = false
     @State private var newNameInput = ""
@@ -66,7 +65,7 @@ struct ProfileSheetView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             } else {
-                                Text(authManager.isAuthenticated ? "Apple ID Connected" : "Local Session")
+                                Text(authManager.iCloudStatus == .available ? "iCloud Private Sync Active" : "Local Storage")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -125,34 +124,6 @@ struct ProfileSheetView: View {
                     .disabled(isManualSyncing)
                 }
                 
-                // ── Account Actions ───────────────────────────────────────
-                Section {
-                    if authManager.isAuthenticated {
-                        Button(role: .destructive, action: {
-                            authManager.signOut()
-                            dismiss()
-                        }) {
-                            HStack {
-                                Spacer()
-                                Text("Sign Out")
-                                    .fontWeight(.semibold)
-                                Spacer()
-                            }
-                        }
-                    } else {
-                        Button(action: {
-                            showLoginModal = true
-                        }) {
-                            HStack {
-                                Image(systemName: "applelogo")
-                                Text("Sign in with Apple")
-                                    .fontWeight(.semibold)
-                            }
-                            .foregroundColor(.primary)
-                        }
-                    }
-                }
-                
                 // ── App Info ──────────────────────────────────────────────
                 Section {
                     HStack {
@@ -172,11 +143,6 @@ struct ProfileSheetView: View {
                     }
                     .fontWeight(.semibold)
                 }
-            }
-            .sheet(isPresented: $showLoginModal) {
-                LoginView(onLoginSuccess: {
-                    showLoginModal = false
-                })
             }
             .alert("Edit Profile Name", isPresented: $showEditNameAlert) {
                 TextField("Your Name", text: $newNameInput)

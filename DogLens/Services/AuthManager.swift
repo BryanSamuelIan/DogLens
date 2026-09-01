@@ -215,12 +215,20 @@ final class AuthManager: ObservableObject {
             let status = try await container.accountStatus()
             self.iCloudStatus = status
             
-            // Auto-resolve name if user is authenticated but name is default
-            if self.isAuthenticated && (self.currentUser?.fullName == "DogLens Explorer" || self.currentUser?.fullName.isEmpty == true) {
+            // Auto-resolve user name from CloudKit account if not customized
+            if self.currentUser == nil || self.currentUser?.fullName == "DogLens Explorer" || self.currentUser?.fullName.isEmpty == true {
                 if let cloudName = await self.fetchCloudKitUserName() {
-                    self.currentUser?.fullName = cloudName
-                    if let updated = self.currentUser {
-                        self.saveSession(profile: updated)
+                    if var existing = self.currentUser {
+                        existing.fullName = cloudName
+                        self.saveSession(profile: existing)
+                    } else {
+                        let user = UserProfile(
+                            id: UUID().uuidString,
+                            fullName: cloudName,
+                            email: nil,
+                            createdAt: Date()
+                        )
+                        self.saveSession(profile: user)
                     }
                 }
             }
