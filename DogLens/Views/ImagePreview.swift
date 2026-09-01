@@ -22,7 +22,10 @@ struct ImagePreviewView: View {
                     .padding()
             } else {
                 Button(action: { vm.detect(image: image) }) {
-                    Text("Detect Dogs")
+                    HStack {
+                        Image(systemName: "brain")
+                        Text("Detect Dogs")
+                    }
                         .font(.headline)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -33,7 +36,7 @@ struct ImagePreviewView: View {
                 .padding(.horizontal)
 
                 Button(action: { dismiss() }) {
-                    Text("Retake")
+                    Text("Go Back")
                         .font(.subheadline)
                         .foregroundColor(.blue)
                         .padding()
@@ -44,7 +47,7 @@ struct ImagePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $vm.showResult) {
             if let results = vm.detectionResults, !results.isEmpty {
-                ResultView(image: image, results: results)
+                ImageResultView(image: image, results: results)
             }
         }
         .navigationDestination(isPresented: $vm.showNoDetection) {

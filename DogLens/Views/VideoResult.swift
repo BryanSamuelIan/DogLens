@@ -1,0 +1,242 @@
+import SwiftUI
+import SwiftData
+import AVKit
+
+struct VideoResultView: View {
+    @ObservedObject var vm: VideoInferenceViewModel
+    var onScanAgain: (() -> Void)?
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Query private var breeds: [DogBreed]
+
+    @State private var showAnnotated = true
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // ── View Mode Picker ──────────────────────────────────────
+                if vm.annotatedVideoURL != nil {
+                    Picker("View Mode", selection: $showAnnotated) {
+                        Text("Detected").tag(true)
+                        Text("Original").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .onChange(of: showAnnotated) { _, annotated in
+                        switchPlayer(showAnnotated: annotated)
+                    }
+                }
+
+                // ── Video Player ──────────────────────────────────────────
+                if let player = player {
+                    VideoPlayer(player: player)
+                        .frame(height: 360)
+                        .cornerRadius(16)
+                        .padding(.horizontal)
+                        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
+                } else {
+                    ProgressView("Loading video…")
+                        .frame(height: 360)
+                }
+
+                // ── Detection Results List ────────────────────────────────
+                VStack(spacing: 16) {
+                    let dogs = vm.trackedDogs
+                    let count = dogs.isEmpty ? vm.allVideoDetections.count : dogs.count
+
+                    Text("\(count) Dog(s) Detected")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    if count == 0 {
+                        Text("No dog breeds detected in video.")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else if !dogs.isEmpty {
+                        ForEach(dogs) { dog in
+                            let isHigh = dog.isHighConfidence
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(dog.displayName)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .fontWeight(.semibold)
+                                    Text(dog.breedName)
+                                        .font(.headline)
+                                        .fontWeight(isHigh ? .bold : .regular)
+                                }
+                                Spacer()
+                                if dog.confidence > 0 {
+                                    Text(String(format: "%.1f%%", dog.confidence * 100))
+                                        .font(.subheadline)
+                                        .foregroundColor(isHigh ? .primary : .secondary)
+                                        .fontWeight(isHigh ? .bold : .regular)
+                                }
+                            }
+                            .padding()
+                            .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
+                        }
+                    } else {
+                        let detectionsArray: [(breedName: String, confidence: Double)] = vm.allVideoDetections.map { key, value in
+                            (breedName: key, confidence: value)
+                        }
+                        let detections = detectionsArray.sorted { lhs, rhs in
+                            lhs.confidence > rhs.confidence
+                        }
+
+                        ForEach(detections, id: \.breedName) { item in
+                            let isHigh = item.confidence >= 0.7
+                            HStack {
+                                Text(item.breedName)
+                                    .font(.headline)
+                                    .fontWeight(isHigh ? .bold : .regular)
+                                Spacer()
+                                Text(String(format: "%.1f%%", item.confidence * 100))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .fontWeight(isHigh ? .bold : .regular)
+                            }
+                            .padding()
+                            .background(isHigh ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isHigh ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+                            )
+                            .shadow(color: isHigh ? Color.orange.opacity(0.15) : .clear, radius: isHigh ? 6 : 0, x: 0, y: 3)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+
+                // ── Action Buttons ────────────────────────────────────────
+                VStack(spacing: 16) {
+                    
+                    if vm.isNewBreed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+
+                            Text("New Breed!")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.orange)
+
+                            Image(systemName: "sparkles")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(Capsule())
+                        .transition(
+                            .scale.combined(with: .opacity)
+                        )
+                    }
+                    
+                    
+
+                    // Save to Breed Gallery (Only if highest confidence is at least 70% / 0.7)
+                    if vm.allVideoDetections.values.contains(where: { $0 >= 0.70 }) {
+                        Button(action: vm.saveToBreedGallery) {
+                            HStack {
+                                if vm.isNewBreed {
+                                    Image(systemName: "star.fill")
+                                        .font(.subheadline)
+                                }
+                                Text("Save Video to Breed Gallery")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .cornerRadius(16)
+                        }
+                    }
+                    
+                    // Save to Photos
+                    Button(action: vm.saveToPhotos) {
+                        HStack {
+                            if vm.isSavingToPhotos {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            Text("Save Video to Photos")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(16)
+                    }
+                    .disabled(vm.isSavingToPhotos)
+
+                    // Scan Again
+                    Button {
+                        player?.pause()
+                        if let onScanAgain = onScanAgain {
+                            onScanAgain()
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Text("Scan Again")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                            .padding()
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 40)
+            }
+            .padding(.top, 16)
+        }
+        .navigationTitle("Video Result")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            vm.modelContext = modelContext
+            vm.breeds = breeds
+            setupPlayer()
+        }
+        .onDisappear {
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
+        }
+        .onChange(of: breeds) { _, newBreeds in
+            vm.breeds = newBreeds
+        }
+        .alert("Save Result", isPresented: $vm.showingSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(vm.saveMessage)
+        }
+    }
+
+    private func setupPlayer() {
+        let targetURL = (showAnnotated ? vm.annotatedVideoURL : nil) ?? vm.sourceURL
+        let p = AVPlayer(url: targetURL)
+        player = p
+        p.play()
+    }
+
+    private func switchPlayer(showAnnotated: Bool) {
+        let targetURL = (showAnnotated ? vm.annotatedVideoURL : nil) ?? vm.sourceURL
+        player?.pause()
+        let newPlayer = AVPlayer(url: targetURL)
+        player = newPlayer
+        newPlayer.play()
+    }
+}

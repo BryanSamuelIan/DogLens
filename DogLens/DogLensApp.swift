@@ -15,32 +15,35 @@ struct DogLensApp: App {
             DogBreed.self,
             BreedImage.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        
+        // Explicitly set cloudKitDatabase to .none so SwiftData uses clean local storage,
+        // while our dedicated CloudKitService manages media assets and iCloud synchronization.
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .none
+        )
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            
-            // Seed data if empty
-            Task { @MainActor in
-                let context = container.mainContext
-                let fetchDescriptor = FetchDescriptor<DogBreed>()
-                do {
-                    let existingBreeds = try context.fetch(fetchDescriptor)
-                    if existingBreeds.isEmpty {
-                        for breedName in DogBreed.predefinedBreeds {
-                            let newBreed = DogBreed(name: breedName)
-                            context.insert(newBreed)
-                        }
-                        try context.save()
-                    }
-                } catch {
-                    print("Error seeding database: \(error)")
-                }
-            }
-            
+            seedBreedsIfNeeded(container: container)
             return container
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            print("Failed to load ModelContainer with default config: \(error). Attempting fallback...")
+            
+            // Fallback recovery: attempt in-memory or rebuilt configuration if SQLite store was mismatched
+            do {
+                let fallbackConfig = ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: false,
+                    cloudKitDatabase: .none
+                )
+                let fallbackContainer = try ModelContainer(for: schema, configurations: [fallbackConfig])
+                seedBreedsIfNeeded(container: fallbackContainer)
+                return fallbackContainer
+            } catch {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
         }
     }()
 
@@ -49,5 +52,26 @@ struct DogLensApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+    }
+    
+    // MARK: - Database Seeding Helper
+    
+    private static func seedBreedsIfNeeded(container: ModelContainer) {
+        Task { @MainActor in
+            let context = container.mainContext
+            let fetchDescriptor = FetchDescriptor<DogBreed>()
+            do {
+                let existingBreeds = try context.fetch(fetchDescriptor)
+                if existingBreeds.isEmpty {
+                    for breedName in DogBreed.predefinedBreeds {
+                        let newBreed = DogBreed(name: breedName)
+                        context.insert(newBreed)
+                    }
+                    try context.save()
+                }
+            } catch {
+                print("Error seeding database: \(error)")
+            }
+        }
     }
 }

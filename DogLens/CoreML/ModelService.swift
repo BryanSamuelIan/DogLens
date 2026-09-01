@@ -143,7 +143,6 @@ class ModelService {
                 }
                 if keep { nmsResults.append(result) }
             }
-
             return nmsResults
         }.value
     }

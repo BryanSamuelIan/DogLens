@@ -8,6 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var authManager = AuthManager.shared
+    @StateObject private var cloudService = CloudKitService.shared
+    
     var body: some View {
         TabView {
             HomeView()
@@ -20,7 +23,12 @@ struct ContentView: View {
                     Label("Gallery", systemImage: "photo.on.rectangle")
                 }
         }
-        .tint(.orange) // Theme color
+        .tint(.orange)
+        .environmentObject(authManager)
+        .environmentObject(cloudService)
+        .task {
+            await authManager.checkiCloudStatus()
+        }
     }
 }
 

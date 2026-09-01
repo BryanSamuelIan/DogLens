@@ -4,10 +4,19 @@ import SwiftData
 struct BreedGalleryView: View {
     @Query(sort: \DogBreed.name) private var breeds: [DogBreed]
     @StateObject private var vm = BreedGalleryViewModel()
+    @ObservedObject private var cloudService = CloudKitService.shared
+    @Environment(\.modelContext) private var modelContext
+    @State private var showProfileSheet = false
 
     let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
     ]
+
+    private let totalBreeds = DogBreed.predefinedBreeds.count
+
+    var unlockedCount: Int {
+        breeds.filter { $0.imageCount > 0 }.count
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,12 +41,77 @@ struct BreedGalleryView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding()
                 }
             }
+            .refreshable {
+                await cloudService.syncWithLocalDatabase(modelContext: modelContext)
+                await cloudService.refreshCloudItemCount()
+            }
+            .task {
+                await cloudService.syncWithLocalDatabase(modelContext: modelContext)
+                await cloudService.refreshCloudItemCount()
+            }
             .navigationTitle("Breed Gallery")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showProfileSheet = true
+                    } label: {
+                        iCloudIconButton
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("\(unlockedCount)/\(totalBreeds)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Text("Unlocked")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
             .searchable(text: $vm.searchText, prompt: "Search breeds")
             .background(Color(.systemGroupedBackground))
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileSheetView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var iCloudIconButton: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .frame(width: 32, height: 32)
+            
+            switch cloudService.syncState {
+            case .syncing:
+                ProgressView()
+                    .scaleEffect(0.7)
+            case .synced:
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+            case .error:
+                Image(systemName: "exclamationmark.icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.red)
+            case .idle:
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+            }
         }
     }
 }

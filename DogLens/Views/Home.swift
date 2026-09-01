@@ -7,7 +7,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                // App Logo
+                // ── App Logo ──────────────────────────────────────────────
                 Image(systemName: "viewfinder.circle.fill")
                     .resizable()
                     .scaledToFit()
@@ -29,6 +29,7 @@ struct HomeView: View {
                 Spacer()
 
                 VStack(spacing: 16) {
+                    // ── Scan Dog (Photo + Video) ──────────────────────────
                     Button(action: vm.requestCameraPermission) {
                         HStack {
                             Image(systemName: "camera.fill")
@@ -42,6 +43,7 @@ struct HomeView: View {
                         .cornerRadius(16)
                     }
 
+                    // ── Upload Photo ──────────────────────────────────────
                     Button(action: vm.requestPhotoPermission) {
                         HStack {
                             Image(systemName: "photo.on.rectangle.angled")
@@ -54,33 +56,98 @@ struct HomeView: View {
                         .background(Color.blue.opacity(0.1))
                         .cornerRadius(16)
                     }
+
+                    // ── Upload Video ──────────────────────────────────────
+                    Button(action: vm.requestVideoPermission) {
+                        HStack {
+                            if vm.isLoadingVideo {
+                                ProgressView().tint(.purple)
+                            } else {
+                                Image(systemName: "video.badge.plus")
+                            }
+                            Text("Upload Video")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.purple)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple.opacity(0.1))
+                        .cornerRadius(16)
+                    }
+                    .disabled(vm.isLoadingVideo)
                 }
                 .padding(.horizontal, 32)
                 .padding(.bottom, 40)
             }
             .padding(.top, 60)
-            .photosPicker(isPresented: $vm.showPhotoPicker, selection: $vm.selectedPhotoItem, matching: .images)
+
+            // ── Photo picker ──────────────────────────────────────────────
+            .photosPicker(isPresented: $vm.showPhotoPicker,
+                          selection: $vm.selectedPhotoItem,
+                          matching: .images)
             .onChange(of: vm.selectedPhotoItem) { _, _ in
                 Task { await vm.loadSelectedPhoto() }
             }
+
+            // ── Video picker ──────────────────────────────────────────────
+            .photosPicker(isPresented: $vm.showVideoPicker,
+                          selection: $vm.selectedVideoItem,
+                          matching: .videos)
+            .onChange(of: vm.selectedVideoItem) { _, _ in
+                Task { await vm.loadSelectedVideo() }
+            }
+
+            // ── Navigation: Photo upload → ImagePreviewView ───────────────
             .navigationDestination(isPresented: $vm.showPreview) {
                 if let image = vm.selectedImage {
                     ImagePreviewView(image: image)
                 }
             }
-            .fullScreenCover(isPresented: $vm.showCamera) {
-                ScannerView { image in
-                    vm.handleCameraCapture(image)
-                    vm.showCamera = false
+            .onChange(of: vm.showPreview) { _, isPresented in
+                if !isPresented {
+                    vm.resetPhotoState()
                 }
             }
+
+            // ── Navigation: Video upload → VideoPreviewView ───────────────
+            .navigationDestination(isPresented: $vm.showVideoPreview) {
+                if let url = vm.selectedVideoURL {
+                    VideoPreviewView(videoURL: url)
+                }
+            }
+            .onChange(of: vm.showVideoPreview) { _, isPresented in
+                if !isPresented {
+                    vm.resetVideoState()
+                }
+            }
+
+            // ── Scan Dog: fullScreenCover with Photo/Video tabs ───────────
+            .fullScreenCover(isPresented: $vm.showCamera) {
+                ScanDogContainerView(onClose: { vm.showCamera = false })
+            }
+
+            // ── Permission alert ──────────────────────────────────────────
             .alert("Permission Denied", isPresented: $vm.showPermissionAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(vm.permissionMessage)
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showProfileSheet = true }) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.title3)
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileSheetView()
+            }
         }
     }
+    
+    @State private var showProfileSheet = false
 }
 
 #Preview {
