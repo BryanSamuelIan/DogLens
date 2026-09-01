@@ -12,6 +12,8 @@ struct ProfileSheetView: View {
     
     @State private var showLoginModal = false
     @State private var isManualSyncing = false
+    @State private var showEditNameAlert = false
+    @State private var newNameInput = ""
     
     var body: some View {
         NavigationStack {
@@ -43,9 +45,21 @@ struct ProfileSheetView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(authManager.currentUser?.fullName ?? "Guest Explorer")
-                                .font(.headline)
-                                .foregroundColor(.primary)
+                            HStack(spacing: 6) {
+                                Text(authManager.currentUser?.fullName ?? "Guest Explorer")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                
+                                Button {
+                                    newNameInput = authManager.currentUser?.fullName ?? ""
+                                    showEditNameAlert = true
+                                } label: {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.subheadline)
+                                        .foregroundColor(.orange)
+                                }
+                                .buttonStyle(.plain)
+                            }
                             
                             if let email = authManager.currentUser?.email {
                                 Text(email)
@@ -57,6 +71,8 @@ struct ProfileSheetView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+                        
+                        Spacer()
                     }
                     .padding(.vertical, 6)
                 }
@@ -161,6 +177,18 @@ struct ProfileSheetView: View {
                 LoginView(onLoginSuccess: {
                     showLoginModal = false
                 })
+            }
+            .alert("Edit Profile Name", isPresented: $showEditNameAlert) {
+                TextField("Your Name", text: $newNameInput)
+                Button("Cancel", role: .cancel) {}
+                Button("Save") {
+                    authManager.updateUserName(newNameInput)
+                }
+            } message: {
+                Text("Enter your display name for DogLens.")
+            }
+            .task {
+                await authManager.checkiCloudStatus()
             }
         }
     }
