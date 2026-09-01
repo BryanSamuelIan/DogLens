@@ -4,6 +4,9 @@ import SwiftData
 struct BreedGalleryView: View {
     @Query(sort: \DogBreed.name) private var breeds: [DogBreed]
     @StateObject private var vm = BreedGalleryViewModel()
+    @ObservedObject private var cloudService = CloudKitService.shared
+    @Environment(\.modelContext) private var modelContext
+    @State private var showProfileSheet = false
 
     let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
@@ -41,20 +44,22 @@ struct BreedGalleryView: View {
                 }
             }
             .refreshable {
-                await CloudKitService.shared.syncWithLocalDatabase(modelContext: modelContext)
-                await CloudKitService.shared.refreshCloudItemCount()
+                await cloudService.syncWithLocalDatabase(modelContext: modelContext)
+                await cloudService.refreshCloudItemCount()
+            }
+            .task {
+                await cloudService.syncWithLocalDatabase(modelContext: modelContext)
+                await cloudService.refreshCloudItemCount()
             }
             .navigationTitle("Breed Gallery")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "icloud.fill")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        Text(CloudKitService.shared.syncState.displayText)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                    Button {
+                        showProfileSheet = true
+                    } label: {
+                        iCloudIconButton
                     }
+                    .buttonStyle(.plain)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -77,10 +82,38 @@ struct BreedGalleryView: View {
             }
             .searchable(text: $vm.searchText, prompt: "Search breeds")
             .background(Color(.systemGroupedBackground))
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileSheetView()
+            }
         }
     }
-    
-    @Environment(\.modelContext) private var modelContext
+
+    @ViewBuilder
+    private var iCloudIconButton: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .frame(width: 32, height: 32)
+            
+            switch cloudService.syncState {
+            case .syncing:
+                ProgressView()
+                    .scaleEffect(0.7)
+            case .synced:
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+            case .error:
+                Image(systemName: "exclamationmark.icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.red)
+            case .idle:
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+            }
+        }
+    }
 }
 
 struct BreedCard: View {
