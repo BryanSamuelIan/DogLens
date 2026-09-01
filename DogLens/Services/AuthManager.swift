@@ -109,6 +109,16 @@ final class AuthManager: ObservableObject {
             
             Task {
                 await checkiCloudStatus()
+                
+                // If Apple Sign In didn't return a name (re-login), fetch from CloudKit
+                if self.currentUser?.fullName == "DogLens Explorer" || self.currentUser?.fullName.isEmpty == true {
+                    if let cloudName = await self.fetchCloudKitUserName() {
+                        self.currentUser?.fullName = cloudName
+                        if let updated = self.currentUser {
+                            self.saveSession(profile: updated)
+                        }
+                    }
+                }
                 self.isLoading = false
             }
             
@@ -145,6 +155,26 @@ final class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: userProfileKey)
     }
     
+    // MARK: - Update Custom Name
+    
+    func updateUserName(_ newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        if var user = currentUser {
+            user.fullName = trimmed
+            saveSession(profile: user)
+        } else {
+            let newUser = UserProfile(
+                id: UUID().uuidString,
+                fullName: trimmed,
+                email: nil,
+                createdAt: Date()
+            )
+            saveSession(profile: newUser)
+        }
+    }
+    
     // MARK: - Private Session Persistence
     
     private func saveSession(profile: UserProfile) {
@@ -159,13 +189,49 @@ final class AuthManager: ObservableObject {
         }
     }
     
-    // MARK: - iCloud Account Verification
+    // MARK: - CloudKit User Discovery & Status
+    
+    func fetchCloudKitUserName() async -> String? {
+        do {
+            let container = CKContainer(identifier: "iCloud.DogLens")
+            let userRecordID = try await container.userRecordID()
+            let userIdentity = try await container.userIdentity(forUserRecordID: userRecordID)
+            if let nameComponents = userIdentity?.nameComponents {
+                let formatter = PersonNameComponentsFormatter()
+                let formatted = formatter.string(from: nameComponents).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !formatted.isEmpty {
+                    return formatted
+                }
+            }
+        } catch {
+            print("Could not discover user identity from CloudKit: \(error)")
+        }
+        return nil
+    }
     
     func checkiCloudStatus() async {
         do {
             let container = CKContainer(identifier: "iCloud.DogLens")
             let status = try await container.accountStatus()
             self.iCloudStatus = status
+            
+            // Auto-resolve user name from CloudKit account if not customized
+            if self.currentUser == nil || self.currentUser?.fullName == "DogLens Explorer" || self.currentUser?.fullName.isEmpty == true {
+                if let cloudName = await self.fetchCloudKitUserName() {
+                    if var existing = self.currentUser {
+                        existing.fullName = cloudName
+                        self.saveSession(profile: existing)
+                    } else {
+                        let user = UserProfile(
+                            id: UUID().uuidString,
+                            fullName: cloudName,
+                            email: nil,
+                            createdAt: Date()
+                        )
+                        self.saveSession(profile: user)
+                    }
+                }
+            }
         } catch {
             self.iCloudStatus = .couldNotDetermine
         }

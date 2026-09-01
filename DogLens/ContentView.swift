@@ -12,26 +12,23 @@ struct ContentView: View {
     @StateObject private var cloudService = CloudKitService.shared
     
     var body: some View {
-        Group {
-            if authManager.isAuthenticated || authManager.isGuest {
-                TabView {
-                    HomeView()
-                        .tabItem {
-                            Label("Home", systemImage: "house")
-                        }
-                    
-                    BreedGalleryView()
-                        .tabItem {
-                            Label("Gallery", systemImage: "photo.on.rectangle")
-                        }
+        TabView {
+            HomeView()
+                .tabItem {
+                    Label("Home", systemImage: "house")
                 }
-                .tint(.orange)
-            } else {
-                LoginView()
-            }
+            
+            BreedGalleryView()
+                .tabItem {
+                    Label("Gallery", systemImage: "photo.on.rectangle")
+                }
         }
+        .tint(.orange)
         .environmentObject(authManager)
         .environmentObject(cloudService)
+        .task {
+            await authManager.checkiCloudStatus()
+        }
     }
 }
 
