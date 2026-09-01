@@ -53,6 +53,7 @@ struct ContentView: View {
             .frame(minWidth: 750, minHeight: 550)
         }
         .task {
+            cloudKitService.checkAccountStatus()
             // Initial background iCloud sync on startup
             await cloudKitService.syncFromCloud(modelContext: modelContext)
         }

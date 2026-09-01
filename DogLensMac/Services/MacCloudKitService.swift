@@ -22,9 +22,7 @@ final class MacCloudKitService {
     var syncStatus: MacSyncStatus = .idle
     var isAvailable: Bool = false
 
-    private init() {
-        checkAccountStatus()
-    }
+    private init() {}
 
     func checkAccountStatus() {
         container.accountStatus { [weak self] status, error in

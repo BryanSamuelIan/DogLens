@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AppKit
+import UniformTypeIdentifiers
 
 struct MacBreedGalleryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -253,11 +254,41 @@ struct MacFullScreenMediaView: View {
                 Spacer()
             }
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        let breedName = breedImage.breed?.name.replacingOccurrences(of: " ", with: "_") ?? "Dog"
+                        let filename = "DogLens_\(breedName)_\(showOriginal ? "Original" : "Detection").jpg"
+                        if let img = displayImage {
+                            saveImageToFile(image: img, defaultName: filename)
+                        }
+                    } label: {
+                        Label("Save to File…", systemImage: "arrow.down.doc")
+                    }
+                }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Close") {
                         dismiss()
                     }
                 }
+            }
+        }
+    }
+
+    private func saveImageToFile(image: NSImage, defaultName: String) {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsTagField = false
+        savePanel.nameFieldStringValue = defaultName
+        savePanel.allowedContentTypes = [.jpeg, .png]
+
+        if let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            savePanel.directoryURL = downloadsURL
+        }
+
+        if savePanel.runModal() == .OK, let url = savePanel.url {
+            if let data = image.jpegData {
+                try? data.write(to: url)
             }
         }
     }

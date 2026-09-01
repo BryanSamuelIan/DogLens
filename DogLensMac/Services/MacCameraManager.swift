@@ -24,22 +24,28 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
     override init() {
         super.init()
+    }
+
+    func setup() {
         checkPermissions()
     }
 
     func checkPermissions() {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
-        self.authorizationStatus = status
-        if status == .authorized {
-            discoverDevices()
-            startSession()
-        } else if status == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    self?.authorizationStatus = granted ? .authorized : .denied
-                    if granted {
-                        self?.discoverDevices()
-                        self?.startSession()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.authorizationStatus = status
+            if status == .authorized {
+                self.discoverDevices()
+                self.startSession()
+            } else if status == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                    DispatchQueue.main.async {
+                        self?.authorizationStatus = granted ? .authorized : .denied
+                        if granted {
+                            self?.discoverDevices()
+                            self?.startSession()
+                        }
                     }
                 }
             }
