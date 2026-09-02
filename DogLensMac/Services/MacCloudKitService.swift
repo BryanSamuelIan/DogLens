@@ -36,7 +36,7 @@ final class MacCloudKitService {
     }
 
     var syncStatus: MacSyncStatus = .idle
-    var isAvailable: Bool = false
+    var isAvailable: Bool = true
     var backedUpItemCount: Int = 0
 
     private init() {}
@@ -44,19 +44,19 @@ final class MacCloudKitService {
     func checkAccountStatus() async {
         do {
             let status = try await container.accountStatus()
-            self.isAvailable = (status == .available)
-            print("Mac iCloud Account Status: \(status.rawValue) (available=\(isAvailable))")
+            self.isAvailable = (status == .available || status == .couldNotDetermine)
+            print("Mac iCloud Account Status: \(status.rawValue) (isAvailable=\(isAvailable))")
             if self.isAvailable {
                 await refreshCloudItemCount()
             }
         } catch {
             print("iCloud account status check failed on Mac: \(error)")
-            self.isAvailable = false
+            // Don't permanently block, let subsequent network requests try
+            self.isAvailable = true
         }
     }
 
     func refreshCloudItemCount() async {
-        guard isAvailable else { return }
         do {
             let predicate = NSPredicate(value: true)
             let query = CKQuery(recordType: Self.recordType, predicate: predicate)
@@ -67,26 +67,17 @@ final class MacCloudKitService {
         }
     }
 
-    // MARK: - Sync All Records from iCloud to SwiftData
+    // MARK: - Sync All Records between iCloud and SwiftData (Two-Way Sync)
     func syncWithLocalDatabase(modelContext: ModelContext) async {
         await syncFromCloud(modelContext: modelContext)
     }
 
     func syncFromCloud(modelContext: ModelContext) async {
-        if !isAvailable {
-            await checkAccountStatus()
-            if !isAvailable {
-                syncStatus = .error("iCloud account is not signed in or not available.")
-                return
-            }
-        }
-
         syncStatus = .syncing
 
         do {
             let predicate = NSPredicate(value: true)
             let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-            // No sortDescriptors on query to avoid requiring schema index configuration
 
             var (matchResults, cursor) = try await privateDB.records(matching: query)
 
@@ -114,17 +105,23 @@ final class MacCloudKitService {
             let existingImages = (try? modelContext.fetch(existingDescriptor)) ?? []
             let existingIDs = Set(existingImages.map { $0.id.uuidString.lowercased() })
 
+            // Index existing breeds
             let breedDescriptor = FetchDescriptor<DogBreed>()
             let allBreeds = (try? modelContext.fetch(breedDescriptor)) ?? []
             var breedDict: [String: DogBreed] = [:]
             for b in allBreeds {
-                breedDict[b.name.lowercased()] = b
+                breedDict[b.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] = b
             }
 
+            var cloudRecordIDs = Set<String>()
+
+            // 1. Download records from CloudKit that don't exist locally
             for record in records {
                 let idString = (record["mediaId"] as? String)
                     ?? (record["localID"] as? String)
                     ?? record.recordID.recordName
+
+                cloudRecordIDs.insert(idString.lowercased())
 
                 guard let uuid = UUID(uuidString: idString) else { continue }
 
@@ -132,10 +129,27 @@ final class MacCloudKitService {
                     continue
                 }
 
-                let breedName = record["breedName"] as? String ?? "Unknown"
-                let confidence = record["confidence"] as? Double ?? 0.0
-                let isVideo = (record["isVideo"] as? Int64 ?? 0) == 1
-                let detectionDate = record["detectionDate"] as? Date ?? Date()
+                let rawBreedName = (record["breedName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let breedName = (rawBreedName?.isEmpty == false) ? rawBreedName! : "Unknown Breed"
+
+                let confidence = (record["confidence"] as? Double)
+                    ?? ((record["confidence"] as? NSNumber)?.doubleValue)
+                    ?? 0.0
+
+                let isVideo: Bool
+                if let vInt = record["isVideo"] as? Int64 {
+                    isVideo = (vInt == 1)
+                } else if let vInt = record["isVideo"] as? Int {
+                    isVideo = (vInt == 1)
+                } else if let vNum = record["isVideo"] as? NSNumber {
+                    isVideo = (vNum.intValue == 1)
+                } else {
+                    isVideo = false
+                }
+
+                let detectionDate = (record["detectionDate"] as? Date)
+                    ?? record.creationDate
+                    ?? Date()
 
                 var imageData = Data()
                 if let asset = record["imageAsset"] as? CKAsset,
@@ -166,12 +180,13 @@ final class MacCloudKitService {
 
                 // Find or create breed
                 let breed: DogBreed
-                if let existing = breedDict[breedName.lowercased()] {
+                let key = breedName.lowercased()
+                if let existing = breedDict[key] {
                     breed = existing
                 } else {
                     let newBreed = DogBreed(name: breedName)
                     modelContext.insert(newBreed)
-                    breedDict[breedName.lowercased()] = newBreed
+                    breedDict[key] = newBreed
                     breed = newBreed
                 }
 
@@ -191,23 +206,41 @@ final class MacCloudKitService {
                 downloadedCount += 1
             }
 
+            // 2. Upload any local records that haven't been pushed to CloudKit yet
+            var uploadedLocalCount = 0
+            for localImage in existingImages {
+                if !cloudRecordIDs.contains(localImage.id.uuidString.lowercased()) {
+                    let bName = localImage.breed?.name ?? "Unknown Breed"
+                    await uploadBreedImage(localImage, breedName: bName)
+                    uploadedLocalCount += 1
+                }
+            }
+
             try? modelContext.save()
-            self.backedUpItemCount = records.count
-            syncStatus = .success(downloadedCount > 0 ? "Synced \(downloadedCount) new items" : "iCloud Up to Date")
-            print("CloudKit sync finished on Mac. Downloaded \(downloadedCount) new records out of \(records.count) in cloud.")
+            self.backedUpItemCount = records.count + uploadedLocalCount
+            self.isAvailable = true
+
+            let statusMessage: String
+            if downloadedCount > 0 && uploadedLocalCount > 0 {
+                statusMessage = "Synced \(downloadedCount) down, \(uploadedLocalCount) up"
+            } else if downloadedCount > 0 {
+                statusMessage = "Synced \(downloadedCount) new items"
+            } else if uploadedLocalCount > 0 {
+                statusMessage = "Uploaded \(uploadedLocalCount) local items"
+            } else {
+                statusMessage = "iCloud Up to Date"
+            }
+
+            syncStatus = .success(statusMessage)
+            print("CloudKit sync finished on Mac. Downloaded \(downloadedCount), Uploaded \(uploadedLocalCount), Total in cloud \(records.count).")
         } catch {
             print("CloudKit sync error on Mac: \(error)")
             syncStatus = .error(error.localizedDescription)
         }
     }
 
-    // MARK: - Upload New Item to iCloud
+    // MARK: - Upload Item to iCloud
     func uploadBreedImage(_ breedImage: BreedImage, breedName: String) async {
-        if !isAvailable {
-            await checkAccountStatus()
-            if !isAvailable { return }
-        }
-
         do {
             let recordID = CKRecord.ID(recordName: breedImage.id.uuidString)
             let record = CKRecord(recordType: Self.recordType, recordID: recordID)
@@ -261,6 +294,18 @@ final class MacCloudKitService {
         } catch {
             print("Failed to upload to CloudKit from Mac: \(error)")
             self.syncStatus = .error(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Delete Cloud Media
+    func deleteCloudMedia(recordName: String) async {
+        do {
+            let recordID = CKRecord.ID(recordName: recordName)
+            _ = try await privateDB.deleteRecord(withID: recordID)
+            self.backedUpItemCount = max(0, self.backedUpItemCount - 1)
+            print("Successfully deleted record \(recordName) from CloudKit on Mac")
+        } catch {
+            print("Failed to delete record \(recordName) from CloudKit on Mac: \(error)")
         }
     }
 

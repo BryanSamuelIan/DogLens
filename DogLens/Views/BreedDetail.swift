@@ -49,6 +49,7 @@ struct BreedDetailView: View {
     }
 
     private func deleteImage(_ breedImage: BreedImage) {
+        let idString = breedImage.id.uuidString
         if let index = breed.images.firstIndex(where: { $0.id == breedImage.id }) {
             breed.images.remove(at: index)
             modelContext.delete(breedImage)
@@ -56,6 +57,9 @@ struct BreedDetailView: View {
                 try modelContext.save()
             } catch {
                 print("Failed to delete image")
+            }
+            Task {
+                try? await CloudKitService.shared.deleteCloudMedia(recordName: idString)
             }
         }
     }

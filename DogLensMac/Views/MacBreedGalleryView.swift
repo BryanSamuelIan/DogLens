@@ -376,10 +376,15 @@ struct MacBreedDetailSheet: View {
     }
 
     private func deleteImage(_ item: BreedImage) {
+        let idString = item.id.uuidString
         if let idx = breed.images.firstIndex(where: { $0.id == item.id }) {
             breed.images.remove(at: idx)
             modelContext.delete(item)
             try? modelContext.save()
+
+            Task {
+                await MacCloudKitService.shared.deleteCloudMedia(recordName: idString)
+            }
         }
     }
 }
