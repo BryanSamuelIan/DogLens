@@ -7,153 +7,136 @@ import CoreGraphics
 class ModelService {
     static let shared = ModelService()
 
-    private var model: DogLensImagev2?
+    private var model: DogBreedYOLO11s?
 
     private init() {}
 
-    private func getModel() throws -> DogLensImagev2 {
+    private func getModel() throws -> DogBreedYOLO11s {
         if let existing = self.model {
             return existing
         }
         do {
             let config = MLModelConfiguration()
-            config.computeUnits = .cpuAndNeuralEngine
-            let loaded = try DogLensImagev2(configuration: config)
+            config.computeUnits = .all
+            let loaded = try DogBreedYOLO11s(configuration: config)
             self.model = loaded
             return loaded
         } catch {
-            print("Failed to load CoreML model with .cpuAndNeuralEngine, trying .cpuOnly: \(error)")
+            print("Failed to load DogBreedYOLO11s with default compute units, trying .cpuOnly: \(error)")
             let cpuConfig = MLModelConfiguration()
             cpuConfig.computeUnits = .cpuOnly
-            let loaded = try DogLensImagev2(configuration: cpuConfig)
+            let loaded = try DogBreedYOLO11s(configuration: cpuConfig)
             self.model = loaded
             return loaded
         }
     }
 
-    /// Run inference with prediction on MainActor and NMS processing off the main thread.
+    /// Run inference with prediction on MainActor and processing off the main thread.
     func detectDogs(in image: UIImage) async throws -> [DetectionResult] {
         let model = try getModel()
 
-        guard let pixelBuffer = image.pixelBufferOffMain(width: 416, height: 416) else {
+        guard let (pixelBuffer, letterboxInfo) = image.letterboxPixelBuffer(targetSize: 640) else {
             throw NSError(domain: "ImageError", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to pixel buffer"])
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to letterbox pixel buffer"])
         }
 
-        let input = DogLensImagev2Input(image: pixelBuffer)
+        let input = DogBreedYOLO11sInput(
+            image: pixelBuffer,
+            iouThreshold: 0.45,
+            confidenceThreshold: 0.25
+        )
         let output = try await model.prediction(input: input)
 
-        guard let multiArray = output.featureValue(for: "var_1223")?.multiArrayValue else {
-            return []
-        }
-
+        let coordinates = output.coordinates
+        let confidence = output.confidence
         let imageSize = image.size
 
         return await Task.detached(priority: .userInitiated) {
-            var results: [DetectionResult] = []
-            let numAnchors = 3549
-            let numClasses = 52
+            let numDetections = coordinates.shape.first?.intValue ?? 0
+            guard numDetections > 0 else { return [] }
 
-            let strides = multiArray.strides
-            let stride1 = strides[1].intValue
-            let stride2 = strides[2].intValue
+            let coordStrides = coordinates.strides
+            let confStrides = confidence.strides
+            guard coordStrides.count >= 2, confStrides.count >= 2 else { return [] }
 
-            let isFloat32 = multiArray.dataType == .float32
-            let isDouble  = multiArray.dataType == .double
+            let coordStride0 = coordStrides[0].intValue
+            let coordStride1 = coordStrides[1].intValue
+            let confStride0 = confStrides[0].intValue
+            let confStride1 = confStrides[1].intValue
 
-            let ptr32     = isFloat32 ? multiArray.dataPointer.bindMemory(to: Float32.self, capacity: multiArray.count) : nil
-            let ptrDouble = isDouble  ? multiArray.dataPointer.bindMemory(to: Double.self,   capacity: multiArray.count) : nil
-            var readFloat: (Int) -> Float = { index in multiArray[index].floatValue }
-            var readCoords: (Int, Int, Int, Int) -> (CGFloat, CGFloat, CGFloat, CGFloat) = { iX, iY, iW, iH in
-                (CGFloat(multiArray[iX].floatValue), CGFloat(multiArray[iY].floatValue), CGFloat(multiArray[iW].floatValue), CGFloat(multiArray[iH].floatValue))
+            let numClasses = min(confidence.shape.last?.intValue ?? 52, DogBreed.predefinedBreeds.count)
+
+            let isFloat32 = confidence.dataType == .float32
+            let isDouble  = confidence.dataType == .double
+
+            let ptr32     = isFloat32 ? confidence.dataPointer.bindMemory(to: Float32.self, capacity: confidence.count) : nil
+            let ptrDouble = isDouble  ? confidence.dataPointer.bindMemory(to: Double.self,   capacity: confidence.count) : nil
+
+            var readConf: (Int, Int) -> Float = { detIdx, classIdx in
+                confidence[detIdx * confStride0 + classIdx * confStride1].floatValue
             }
 
             if let p = ptr32 {
-                readFloat = { index in p[index] }
-                readCoords = { iX, iY, iW, iH in
-                    (CGFloat(p[iX]), CGFloat(p[iY]), CGFloat(p[iW]), CGFloat(p[iH]))
-                }
+                readConf = { detIdx, classIdx in p[detIdx * confStride0 + classIdx * confStride1] }
             } else if let p = ptrDouble {
-                readFloat = { index in Float(p[index]) }
-                readCoords = { iX, iY, iW, iH in
-                    (CGFloat(p[iX]), CGFloat(p[iY]), CGFloat(p[iW]), CGFloat(p[iH]))
-                }
+                readConf = { detIdx, classIdx in Float(p[detIdx * confStride0 + classIdx * confStride1]) }
             }
 
             #if arch(arm64)
-            if multiArray.dataType == .float16 {
-                let ptr16 = multiArray.dataPointer.bindMemory(to: Float16.self, capacity: multiArray.count)
-                readFloat = { index in Float(ptr16[index]) }
-                readCoords = { iX, iY, iW, iH in
-                    (CGFloat(ptr16[iX]), CGFloat(ptr16[iY]), CGFloat(ptr16[iW]), CGFloat(ptr16[iH]))
-                }
+            if confidence.dataType == .float16 {
+                let ptr16 = confidence.dataPointer.bindMemory(to: Float16.self, capacity: confidence.count)
+                readConf = { detIdx, classIdx in Float(ptr16[detIdx * confStride0 + classIdx * confStride1]) }
             }
             #endif
 
-            for i in 0..<numAnchors {
+            var results: [DetectionResult] = []
+
+            for i in 0..<numDetections {
                 var maxConf: Float = 0.0
                 var maxClassId = 0
 
                 for c in 0..<numClasses {
-                    let index = (4 + c) * stride1 + i * stride2
-                    let conf = readFloat(index)
-
+                    let conf = readConf(i, c)
                     if conf > maxConf {
                         maxConf = conf
                         maxClassId = c
                     }
                 }
 
-                guard maxConf > 0.25 else { continue }
+                guard maxConf >= 0.25 else { continue }
 
-                let iX = 0 * stride1 + i * stride2
-                let iY = 1 * stride1 + i * stride2
-                let iW = 2 * stride1 + i * stride2
-                let iH = 3 * stride1 + i * stride2
+                let normCX = CGFloat(coordinates[i * coordStride0 + 0 * coordStride1].floatValue)
+                let normCY = CGFloat(coordinates[i * coordStride0 + 1 * coordStride1].floatValue)
+                let normW  = CGFloat(coordinates[i * coordStride0 + 2 * coordStride1].floatValue)
+                let normH  = CGFloat(coordinates[i * coordStride0 + 3 * coordStride1].floatValue)
 
-                let (x, y, w, h) = readCoords(iX, iY, iW, iH)
+                // Convert from normalized 640x640 letterbox coordinates back to original image space
+                let canvasCX = normCX * letterboxInfo.targetSize
+                let canvasCY = normCY * letterboxInfo.targetSize
+                let canvasW  = normW  * letterboxInfo.targetSize
+                let canvasH  = normH  * letterboxInfo.targetSize
 
-                // YOLOv8 outputs are in the 416×416 model input space — scale to original image
-                let scaleX = imageSize.width  / 416.0
-                let scaleY = imageSize.height / 416.0
+                let origCenterX = (canvasCX - letterboxInfo.padX) / letterboxInfo.scale
+                let origCenterY = (canvasCY - letterboxInfo.padY) / letterboxInfo.scale
+                let origW = canvasW / letterboxInfo.scale
+                let origH = canvasH / letterboxInfo.scale
 
                 let rect = CGRect(
-                    x: (x - w / 2) * scaleX,
-                    y: (y - h / 2) * scaleY,
-                    width:  w * scaleX,
-                    height: h * scaleY
+                    x: max(0, origCenterX - origW / 2.0),
+                    y: max(0, origCenterY - origH / 2.0),
+                    width: min(imageSize.width, origW),
+                    height: min(imageSize.height, origH)
                 )
 
                 let breedLabel = maxClassId < DogBreed.predefinedBreeds.count
                     ? DogBreed.predefinedBreeds[maxClassId]
                     : "Unknown"
+
                 results.append(DetectionResult(boundingBox: rect, label: breedLabel, confidence: maxConf))
             }
 
-            // Non-Maximum Suppression
             results.sort { $0.confidence > $1.confidence }
-            var nmsResults: [DetectionResult] = []
-            for result in results {
-                var keep = true
-                for kept in nmsResults {
-                    let inter = result.boundingBox.intersection(kept.boundingBox)
-                    if !inter.isNull && !inter.isEmpty {
-                        let interArea = inter.width * inter.height
-                        let area1 = result.boundingBox.width * result.boundingBox.height
-                        let area2 = kept.boundingBox.width * kept.boundingBox.height
-                        let unionArea = area1 + area2 - interArea
-                        if unionArea > 0 {
-                            let iou = interArea / unionArea
-                            if iou > 0.45 {
-                                keep = false
-                                break
-                            }
-                        }
-                    }
-                }
-                if keep { nmsResults.append(result) }
-            }
-            return nmsResults
+            return results
         }.value
     }
 }

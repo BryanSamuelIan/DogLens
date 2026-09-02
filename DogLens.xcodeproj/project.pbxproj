@@ -50,6 +50,7 @@
 		6F927806303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Resources/Models/DogBreedYOLO11s.mlpackage,
 				Resources/Models/DogLensImage.mlpackage,
 				Resources/Models/DogLensImagev2.mlpackage,
 			);
@@ -58,6 +59,7 @@
 		6F927807303851BA007EA6E8 /* Exceptions for "DogLens" folder in "DogLensUITests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Resources/Models/DogBreedYOLO11s.mlpackage,
 				Resources/Models/DogLensImage.mlpackage,
 				Resources/Models/DogLensImagev2.mlpackage,
 			);
