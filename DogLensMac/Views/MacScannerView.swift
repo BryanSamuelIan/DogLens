@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import SwiftData
 import UniformTypeIdentifiers
+import AVFoundation
 
 enum InputMode: String, CaseIterable, Identifiable {
     case webcam = "Live Camera"
@@ -12,7 +13,7 @@ enum InputMode: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .webcam: return "camera.fill"
-        case .fileDrop: return "arrow.down.doc.fill"
+        case .fileDrop: return "photo.on.rectangle.angled"
         }
     }
 }
@@ -43,7 +44,8 @@ struct MacScannerView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 340)
+                    .frame(width: 320)
+                    .tint(.orange)
 
                     Button {
                         openFilePicker()
@@ -116,14 +118,14 @@ struct MacScannerView: View {
                         .ignoresSafeArea()
 
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 4, dash: [10]))
-                        .background(Color.blue.opacity(0.15))
+                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 4, dash: [10]))
+                        .background(Color.orange.opacity(0.12))
                         .padding(24)
 
                     VStack(spacing: 16) {
-                        Image(systemName: "arrow.down.doc.fill")
+                        Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 64))
-                            .foregroundColor(.blue)
+                            .foregroundColor(.orange)
 
                         Text("Drop Image to Scan & Detect Dogs")
                             .font(.title)
@@ -184,19 +186,66 @@ struct MacScannerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
                         )
                 } else {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color.black.opacity(0.85))
                         .overlay {
-                            VStack(spacing: 12) {
+                            VStack(spacing: 14) {
                                 Image(systemName: "camera.fill")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.secondary)
-                                Text("Starting Camera…")
-                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 42))
+                                    .foregroundColor(.orange.opacity(0.85))
+
+                                if cameraManager.authorizationStatus == .authorized {
+                                    VStack(spacing: 6) {
+                                        ProgressView()
+                                            .tint(.orange)
+                                        Text("Starting Camera…")
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                    }
+                                } else if cameraManager.authorizationStatus == .denied {
+                                    VStack(spacing: 8) {
+                                        Text("Camera Access Denied")
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                        Text("Please enable camera access in macOS System Settings.")
+                                            .font(.caption)
+                                            .foregroundColor(.white.opacity(0.7))
+                                            .multilineTextAlignment(.center)
+                                            .padding(.horizontal, 20)
+
+                                        Button("Open System Settings") {
+                                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
+                                                NSWorkspace.shared.open(url)
+                                            }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.orange)
+                                        .padding(.top, 4)
+                                    }
+                                } else {
+                                    VStack(spacing: 8) {
+                                        Text("Camera Access Required")
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                        Text("DogLens needs camera access to scan and identify dogs in real time.")
+                                            .font(.caption)
+                                            .foregroundColor(.white.opacity(0.7))
+                                            .multilineTextAlignment(.center)
+                                            .padding(.horizontal, 20)
+
+                                        Button("Allow Camera Access") {
+                                            cameraManager.startSession()
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.orange)
+                                        .padding(.top, 4)
+                                    }
+                                }
                             }
+                            .padding(24)
                         }
                 }
 
@@ -219,79 +268,105 @@ struct MacScannerView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "camera.shutter.button.fill")
+                        Image(systemName: "camera.fill")
                             .font(.title3)
-                        Text("Capture & Detect")
-                            .fontWeight(.semibold)
+                        Text("Scan Dog")
+                            .fontWeight(.bold)
                     }
-                    .frame(minWidth: 180, minHeight: 38)
+                    .foregroundColor(.white)
+                    .frame(minWidth: 180, minHeight: 40)
+                    .background(Color.orange)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
+                .buttonStyle(.plain)
                 .disabled(isProcessing || !cameraManager.isRunning)
 
                 Button {
                     openFilePicker()
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "folder.fill")
-                        Text("Upload Image File…")
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("Upload Photo…")
                     }
-                    .frame(minHeight: 38)
+                    .fontWeight(.medium)
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 40)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
             }
         }
     }
 
-    // MARK: - Dropzone Area (Rectangle for Drag & Drop)
+    // MARK: - Dropzone Area (iOS DogLens Aesthetic)
     private var dropzoneArea: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(
-                    isDropTargeted ? Color.blue : Color.secondary.opacity(0.35),
-                    style: StrokeStyle(lineWidth: isDropTargeted ? 3 : 2, dash: [10])
+                    isDropTargeted ? Color.orange : Color.secondary.opacity(0.25),
+                    style: StrokeStyle(lineWidth: isDropTargeted ? 3 : 2, dash: [8])
                 )
                 .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(isDropTargeted ? Color.blue.opacity(0.08) : Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(isDropTargeted ? Color.orange.opacity(0.08) : Color(NSColor.controlBackgroundColor).opacity(0.4))
                 )
 
-            VStack(spacing: 20) {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 56))
-                    .foregroundColor(isDropTargeted ? .blue : .secondary)
+            VStack(spacing: 22) {
+                // iOS App Logo / Viewfinder
+                Image(systemName: "viewfinder.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 80, height: 80)
+                    .foregroundStyle(.orange, .blue.opacity(0.8))
 
                 VStack(spacing: 8) {
-                    Text("Drag & Drop Image Here")
-                        .font(.title2)
-                        .fontWeight(.bold)
+                    Text("Identify Dogs with DogLens")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
 
-                    Text("Drop any dog photo directly from Finder, Desktop, or Photos")
-                        .font(.subheadline)
+                    Text("Drag & drop photos or select from your Mac to detect 52 dog breeds")
+                        .font(.body)
                         .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 400)
                 }
 
-                Text("— OR —")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-
-                Button {
-                    openFilePicker()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder.badge.plus")
-                            .font(.headline)
-                        Text("Choose File from Mac…")
-                            .fontWeight(.semibold)
+                HStack(spacing: 14) {
+                    Button {
+                        openFilePicker()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                            Text("Upload Photo")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .buttonStyle(.plain)
+
+                    Button {
+                        inputMode = .webcam
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "camera.fill")
+                            Text("Live Camera")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
-                .controlSize(.large)
+                .padding(.top, 8)
             }
             .padding(40)
 
@@ -303,7 +378,7 @@ struct MacScannerView: View {
                         .tint(.white)
                         .foregroundColor(.white)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
         }
     }
@@ -319,6 +394,7 @@ struct MacScannerView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 170)
+                .tint(.orange)
 
                 Spacer()
 
@@ -332,9 +408,10 @@ struct MacScannerView: View {
                     }
                 } label: {
                     Label("Save to File…", systemImage: "arrow.down.doc.fill")
+                        .fontWeight(.medium)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .tint(.orange)
 
                 Button {
                     withAnimation {
@@ -367,10 +444,13 @@ struct MacScannerView: View {
     // MARK: - Detections Side Panel
     private var detectionsSidePanel: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "pawprint.fill")
+                    .foregroundColor(.orange)
                 Text("Detection Results")
                     .font(.headline)
-                Text("\(detections.count) dog\(detections.count == 1 ? "" : "s") detected")
+                Spacer()
+                Text("\(detections.count) dog\(detections.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -381,8 +461,8 @@ struct MacScannerView: View {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "questionmark.circle")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 36))
+                        .foregroundColor(.orange.opacity(0.6))
                     Text("No dog breed recognized with high confidence.")
                         .font(.subheadline)
                         .multilineTextAlignment(.center)
@@ -403,11 +483,11 @@ struct MacScannerView: View {
                                     Text("\(Int(item.confidence * 100))%")
                                         .font(.subheadline)
                                         .fontWeight(.bold)
-                                        .foregroundColor(.blue)
+                                        .foregroundColor(.orange)
                                 }
 
                                 ProgressView(value: Double(item.confidence), total: 1.0)
-                                    .tint(.blue)
+                                    .tint(.orange)
 
                                 Button {
                                     saveDetectionToGallery(breedName: item.label, confidence: Double(item.confidence))
@@ -416,14 +496,22 @@ struct MacScannerView: View {
                                         Image(systemName: "plus.circle.fill")
                                         Text("Save to Breed Gallery")
                                     }
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(Color.orange)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .buttonStyle(.plain)
                             }
-                            .padding(12)
+                            .padding(14)
                             .background(Color(NSColor.controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                            )
                         }
                     }
                     .padding(.horizontal, 16)
@@ -564,12 +652,12 @@ struct MacScannerView: View {
             breed.images.append(breedImage)
             try modelContext.save()
 
-            // Background iCloud sync
+            // Automatic 2-way background iCloud sync
             Task {
                 await MacCloudKitService.shared.uploadBreedImage(breedImage, breedName: breed.name)
             }
 
-            savedAlertMessage = "Saved \(breedName) to your Breed Gallery and syncing with iCloud."
+            savedAlertMessage = "Saved \(breedName) to your Breed Gallery and synced with iCloud."
             showSavedAlert = true
         } catch {
             print("Failed to save to gallery: \(error)")

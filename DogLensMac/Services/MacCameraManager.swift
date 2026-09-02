@@ -32,13 +32,16 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
         checkPermissions()
     }
 
-    func checkPermissions() {
+    func checkPermissions(autoStart: Bool = false) {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.authorizationStatus = status
             if status == .authorized {
                 self.discoverDevices()
+                if autoStart {
+                    self.startSession()
+                }
             } else if status == .notDetermined {
                 AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                     DispatchQueue.main.async {
@@ -46,6 +49,9 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
                         self.authorizationStatus = granted ? .authorized : .denied
                         if granted {
                             self.discoverDevices()
+                            if autoStart {
+                                self.startSession()
+                            }
                         }
                     }
                 }
@@ -96,7 +102,16 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func startSession() {
-        guard authorizationStatus == .authorized else { return }
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status != .authorized {
+            checkPermissions(autoStart: true)
+            return
+        }
+
+        self.authorizationStatus = .authorized
+        if availableDevices.isEmpty {
+            discoverDevices()
+        }
 
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
@@ -125,10 +140,11 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
             if !self.session.isRunning {
                 self.session.startRunning()
-                let running = self.session.isRunning
-                DispatchQueue.main.async {
-                    self.isRunning = running
-                }
+            }
+
+            let running = self.session.isRunning
+            DispatchQueue.main.async {
+                self.isRunning = running
             }
         }
     }
@@ -138,9 +154,9 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
             guard let self = self else { return }
             if self.session.isRunning {
                 self.session.stopRunning()
-                DispatchQueue.main.async {
-                    self.isRunning = false
-                }
+            }
+            DispatchQueue.main.async {
+                self.isRunning = false
             }
         }
     }
@@ -209,12 +225,18 @@ final class MacCameraPreviewNSView: NSView {
         } else {
             previewLayer?.session = session
         }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         previewLayer?.frame = bounds
+        CATransaction.commit()
     }
 
     override func layout() {
         super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         previewLayer?.frame = bounds
+        CATransaction.commit()
     }
 }
 

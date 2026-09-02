@@ -21,8 +21,14 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(MacNavigationTab.allCases, id: \.self, selection: $selectedTab) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .tag(tab)
+                Label {
+                    Text(tab.rawValue)
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: tab.icon)
+                        .foregroundColor(tab == selectedTab ? .orange : .secondary)
+                }
+                .tag(tab)
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
@@ -30,16 +36,38 @@ struct ContentView: View {
                 // iCloud Status Indicator
                 HStack(spacing: 8) {
                     Image(systemName: cloudKitService.isAvailable ? "checkmark.icloud.fill" : "exclamationmark.icloud.fill")
-                        .foregroundColor(cloudKitService.isAvailable ? .blue : .orange)
+                        .foregroundColor(cloudKitService.isAvailable ? .orange : .secondary)
 
-                    Text(cloudKitService.isAvailable ? "iCloud Connected" : "iCloud Offline")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(cloudKitService.isAvailable ? "iCloud Synced" : "iCloud Offline")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+
+                        if cloudKitService.isAvailable && cloudKitService.backedUpItemCount > 0 {
+                            Text("\(cloudKitService.backedUpItemCount) items backed up")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
 
                     Spacer()
+
+                    if cloudKitService.isAvailable {
+                        Button {
+                            Task {
+                                await cloudKitService.syncFromCloud(modelContext: modelContext)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Sync with iCloud now")
+                    }
                 }
                 .padding(12)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                .background(.ultraThinMaterial)
             }
         } detail: {
             Group {
@@ -52,6 +80,7 @@ struct ContentView: View {
             }
             .frame(minWidth: 750, minHeight: 550)
         }
+        .tint(.orange)
         .task {
             seedBreedsIfNeeded()
             await cloudKitService.checkAccountStatus()
