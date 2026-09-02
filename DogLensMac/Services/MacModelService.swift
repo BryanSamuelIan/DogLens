@@ -57,12 +57,15 @@ class MacModelService {
         let stride2 = strides[2].intValue
 
         let isFloat32 = multiArray.dataType == .float32
-        let isFloat16 = multiArray.dataType == .float16
         let isDouble  = multiArray.dataType == .double
 
         let ptr32     = isFloat32 ? multiArray.dataPointer.bindMemory(to: Float32.self, capacity: multiArray.count) : nil
-        let ptr16     = isFloat16 ? multiArray.dataPointer.bindMemory(to: Float16.self, capacity: multiArray.count) : nil
         let ptrDouble = isDouble  ? multiArray.dataPointer.bindMemory(to: Double.self,   capacity: multiArray.count) : nil
+
+        #if arch(arm64)
+        let isFloat16 = multiArray.dataType == .float16
+        let ptr16     = isFloat16 ? multiArray.dataPointer.bindMemory(to: Float16.self, capacity: multiArray.count) : nil
+        #endif
 
         for i in 0..<numAnchors {
             var maxConf: Float = 0.0
@@ -73,8 +76,10 @@ class MacModelService {
                 let conf: Float
                 if let p = ptr32 {
                     conf = p[index]
+                #if arch(arm64)
                 } else if let p = ptr16 {
                     conf = Float(p[index])
+                #endif
                 } else if let p = ptrDouble {
                     conf = Float(p[index])
                 } else {
@@ -101,8 +106,10 @@ class MacModelService {
 
             if let p = ptr32 {
                 x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
+            #if arch(arm64)
             } else if let p = ptr16 {
                 x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
+            #endif
             } else if let p = ptrDouble {
                 x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
             } else {
