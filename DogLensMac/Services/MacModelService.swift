@@ -61,10 +61,31 @@ class MacModelService {
 
         let ptr32     = isFloat32 ? multiArray.dataPointer.bindMemory(to: Float32.self, capacity: multiArray.count) : nil
         let ptrDouble = isDouble  ? multiArray.dataPointer.bindMemory(to: Double.self,   capacity: multiArray.count) : nil
+        var readFloat: (Int) -> Float = { index in multiArray[index].floatValue }
+        var readCoords: (Int, Int, Int, Int) -> (CGFloat, CGFloat, CGFloat, CGFloat) = { iX, iY, iW, iH in
+            (CGFloat(multiArray[iX].floatValue), CGFloat(multiArray[iY].floatValue), CGFloat(multiArray[iW].floatValue), CGFloat(multiArray[iH].floatValue))
+        }
+
+        if let p = ptr32 {
+            readFloat = { index in p[index] }
+            readCoords = { iX, iY, iW, iH in
+                (CGFloat(p[iX]), CGFloat(p[iY]), CGFloat(p[iW]), CGFloat(p[iH]))
+            }
+        } else if let p = ptrDouble {
+            readFloat = { index in Float(p[index]) }
+            readCoords = { iX, iY, iW, iH in
+                (CGFloat(p[iX]), CGFloat(p[iY]), CGFloat(p[iW]), CGFloat(p[iH]))
+            }
+        }
 
         #if arch(arm64)
-        let isFloat16 = multiArray.dataType == .float16
-        let ptr16     = isFloat16 ? multiArray.dataPointer.bindMemory(to: Float16.self, capacity: multiArray.count) : nil
+        if multiArray.dataType == .float16 {
+            let ptr16 = multiArray.dataPointer.bindMemory(to: Float16.self, capacity: multiArray.count)
+            readFloat = { index in Float(ptr16[index]) }
+            readCoords = { iX, iY, iW, iH in
+                (CGFloat(ptr16[iX]), CGFloat(ptr16[iY]), CGFloat(ptr16[iW]), CGFloat(ptr16[iH]))
+            }
+        }
         #endif
 
         for i in 0..<numAnchors {
@@ -73,18 +94,7 @@ class MacModelService {
 
             for c in 0..<numClasses {
                 let index = (4 + c) * stride1 + i * stride2
-                let conf: Float
-                if let p = ptr32 {
-                    conf = p[index]
-                #if arch(arm64)
-                } else if let p = ptr16 {
-                    conf = Float(p[index])
-                #endif
-                } else if let p = ptrDouble {
-                    conf = Float(p[index])
-                } else {
-                    conf = multiArray[index].floatValue
-                }
+                let conf = readFloat(index)
 
                 if conf > maxConf {
                     maxConf = conf
@@ -99,23 +109,7 @@ class MacModelService {
             let iW = 2 * stride1 + i * stride2
             let iH = 3 * stride1 + i * stride2
 
-            let x: CGFloat
-            let y: CGFloat
-            let w: CGFloat
-            let h: CGFloat
-
-            if let p = ptr32 {
-                x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
-            #if arch(arm64)
-            } else if let p = ptr16 {
-                x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
-            #endif
-            } else if let p = ptrDouble {
-                x = CGFloat(p[iX]); y = CGFloat(p[iY]); w = CGFloat(p[iW]); h = CGFloat(p[iH])
-            } else {
-                x = CGFloat(multiArray[iX].floatValue); y = CGFloat(multiArray[iY].floatValue)
-                w = CGFloat(multiArray[iW].floatValue); h = CGFloat(multiArray[iH].floatValue)
-            }
+            let (x, y, w, h) = readCoords(iX, iY, iW, iH)
 
             let scaleX = imageSize.width  / 416.0
             let scaleY = imageSize.height / 416.0

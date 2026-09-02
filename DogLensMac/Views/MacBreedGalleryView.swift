@@ -175,11 +175,6 @@ struct MacBreedCard: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-
-                        Text("• Unlocked")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                            .fontWeight(.medium)
                     }
                 }
                 .lineLimit(1)
