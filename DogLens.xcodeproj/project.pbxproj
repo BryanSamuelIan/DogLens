@@ -7,6 +7,20 @@
 	objects = {
 
 /* Begin PBXContainerItemProxy section */
+		6F6116243046D343005F4AD5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F9277BF30382CC6007EA6E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6F6116143046D342005F4AD5;
+			remoteInfo = DogLensMac;
+		};
+		6F61162E3046D343005F4AD5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F9277BF30382CC6007EA6E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6F6116143046D342005F4AD5;
+			remoteInfo = DogLensMac;
+		};
 		6F9277D730382CC7007EA6E8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 6F9277BF30382CC6007EA6E8 /* Project object */;
@@ -24,6 +38,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		6F6116153046D342005F4AD5 /* DogLensMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DogLensMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F6116233046D343005F4AD5 /* DogLensMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogLensMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F61162D3046D343005F4AD5 /* DogLensMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogLensMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9277C730382CC6007EA6E8 /* DogLens.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DogLens.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9277D630382CC7007EA6E8 /* DogLensTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogLensTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9277E030382CC7007EA6E8 /* DogLensUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogLensUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -49,6 +66,21 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		6F6116163046D342005F4AD5 /* DogLensMac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DogLensMac;
+			sourceTree = "<group>";
+		};
+		6F6116263046D343005F4AD5 /* DogLensMacTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DogLensMacTests;
+			sourceTree = "<group>";
+		};
+		6F6116303046D343005F4AD5 /* DogLensMacUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DogLensMacUITests;
+			sourceTree = "<group>";
+		};
 		6F9277C930382CC6007EA6E8 /* DogLens */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -71,6 +103,27 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		6F6116123046D342005F4AD5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F6116203046D343005F4AD5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F61162A3046D343005F4AD5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6F9277C430382CC6007EA6E8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -101,6 +154,9 @@
 				6F9277C930382CC6007EA6E8 /* DogLens */,
 				6F9277D930382CC7007EA6E8 /* DogLensTests */,
 				6F9277E330382CC7007EA6E8 /* DogLensUITests */,
+				6F6116163046D342005F4AD5 /* DogLensMac */,
+				6F6116263046D343005F4AD5 /* DogLensMacTests */,
+				6F6116303046D343005F4AD5 /* DogLensMacUITests */,
 				6F9277C830382CC6007EA6E8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -111,6 +167,9 @@
 				6F9277C730382CC6007EA6E8 /* DogLens.app */,
 				6F9277D630382CC7007EA6E8 /* DogLensTests.xctest */,
 				6F9277E030382CC7007EA6E8 /* DogLensUITests.xctest */,
+				6F6116153046D342005F4AD5 /* DogLensMac.app */,
+				6F6116233046D343005F4AD5 /* DogLensMacTests.xctest */,
+				6F61162D3046D343005F4AD5 /* DogLensMacUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -118,6 +177,74 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		6F6116143046D342005F4AD5 /* DogLensMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6F6116353046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMac" */;
+			buildPhases = (
+				6F6116113046D342005F4AD5 /* Sources */,
+				6F6116123046D342005F4AD5 /* Frameworks */,
+				6F6116133046D342005F4AD5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6F6116163046D342005F4AD5 /* DogLensMac */,
+			);
+			name = DogLensMac;
+			packageProductDependencies = (
+			);
+			productName = DogLensMac;
+			productReference = 6F6116153046D342005F4AD5 /* DogLensMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6F6116223046D343005F4AD5 /* DogLensMacTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6F6116383046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMacTests" */;
+			buildPhases = (
+				6F61161F3046D343005F4AD5 /* Sources */,
+				6F6116203046D343005F4AD5 /* Frameworks */,
+				6F6116213046D343005F4AD5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6F6116253046D343005F4AD5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6F6116263046D343005F4AD5 /* DogLensMacTests */,
+			);
+			name = DogLensMacTests;
+			packageProductDependencies = (
+			);
+			productName = DogLensMacTests;
+			productReference = 6F6116233046D343005F4AD5 /* DogLensMacTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		6F61162C3046D343005F4AD5 /* DogLensMacUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6F61163B3046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMacUITests" */;
+			buildPhases = (
+				6F6116293046D343005F4AD5 /* Sources */,
+				6F61162A3046D343005F4AD5 /* Frameworks */,
+				6F61162B3046D343005F4AD5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6F61162F3046D343005F4AD5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6F6116303046D343005F4AD5 /* DogLensMacUITests */,
+			);
+			name = DogLensMacUITests;
+			packageProductDependencies = (
+			);
+			productName = DogLensMacUITests;
+			productReference = 6F61162D3046D343005F4AD5 /* DogLensMacUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		6F9277C630382CC6007EA6E8 /* DogLens */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6F9277EA30382CC7007EA6E8 /* Build configuration list for PBXNativeTarget "DogLens" */;
@@ -190,6 +317,17 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
+					6F6116143046D342005F4AD5 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					6F6116223046D343005F4AD5 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 6F6116143046D342005F4AD5;
+					};
+					6F61162C3046D343005F4AD5 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 6F6116143046D342005F4AD5;
+					};
 					6F9277C630382CC6007EA6E8 = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -220,11 +358,35 @@
 				6F9277C630382CC6007EA6E8 /* DogLens */,
 				6F9277D530382CC7007EA6E8 /* DogLensTests */,
 				6F9277DF30382CC7007EA6E8 /* DogLensUITests */,
+				6F6116143046D342005F4AD5 /* DogLensMac */,
+				6F6116223046D343005F4AD5 /* DogLensMacTests */,
+				6F61162C3046D343005F4AD5 /* DogLensMacUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		6F6116133046D342005F4AD5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F6116213046D343005F4AD5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F61162B3046D343005F4AD5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6F9277C530382CC6007EA6E8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -249,6 +411,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		6F6116113046D342005F4AD5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F61161F3046D343005F4AD5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6F6116293046D343005F4AD5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6F9277C330382CC6007EA6E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -273,6 +456,16 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		6F6116253046D343005F4AD5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6F6116143046D342005F4AD5 /* DogLensMac */;
+			targetProxy = 6F6116243046D343005F4AD5 /* PBXContainerItemProxy */;
+		};
+		6F61162F3046D343005F4AD5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6F6116143046D342005F4AD5 /* DogLensMac */;
+			targetProxy = 6F61162E3046D343005F4AD5 /* PBXContainerItemProxy */;
+		};
 		6F9277D830382CC7007EA6E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6F9277C630382CC6007EA6E8 /* DogLens */;
@@ -286,6 +479,164 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		6F6116363046D343005F4AD5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DogLensMac/DogLensMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera or webcam to scan dogs.\"";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		6F6116373046D343005F4AD5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DogLensMac/DogLensMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera or webcam to scan dogs.\"";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6F6116393046D343005F4AD5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMacTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DogLensMac.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DogLensMac";
+			};
+			name = Debug;
+		};
+		6F61163A3046D343005F4AD5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMacTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DogLensMac.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DogLensMac";
+			};
+			name = Release;
+		};
+		6F61163C3046D343005F4AD5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMacUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DogLensMac;
+			};
+			name = Debug;
+		};
+		6F61163D3046D343005F4AD5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L82Q8X2NF4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.DogLensMacUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DogLensMac;
+			};
+			name = Release;
+		};
 		6F9277E830382CC7007EA6E8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -574,6 +925,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		6F6116353046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6F6116363046D343005F4AD5 /* Debug */,
+				6F6116373046D343005F4AD5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6F6116383046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMacTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6F6116393046D343005F4AD5 /* Debug */,
+				6F61163A3046D343005F4AD5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6F61163B3046D343005F4AD5 /* Build configuration list for PBXNativeTarget "DogLensMacUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6F61163C3046D343005F4AD5 /* Debug */,
+				6F61163D3046D343005F4AD5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		6F9277C230382CC6007EA6E8 /* Build configuration list for PBXProject "DogLens" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

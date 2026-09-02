@@ -182,6 +182,14 @@ struct ImageResultView: View {
         }
         .navigationTitle("Image Result")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            vm.modelContext = modelContext
+            vm.breeds = breeds
+            await CloudKitService.shared.syncWithLocalDatabase(modelContext: modelContext)
+            if let latest = try? modelContext.fetch(FetchDescriptor<DogBreed>()) {
+                vm.breeds = latest
+            }
+        }
         .onAppear {
             vm.modelContext = modelContext
             vm.breeds = breeds

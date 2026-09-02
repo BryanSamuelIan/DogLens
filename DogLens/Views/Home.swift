@@ -1,7 +1,9 @@
 import SwiftUI
 import PhotosUI
+import SwiftData
 
 struct HomeView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var vm = HomeViewModel()
 
     var body: some View {
@@ -143,6 +145,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showProfileSheet) {
                 ProfileSheetView()
+            }
+            .task {
+                await CloudKitService.shared.syncWithLocalDatabase(modelContext: modelContext)
             }
         }
     }

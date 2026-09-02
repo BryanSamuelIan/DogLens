@@ -119,24 +119,16 @@ struct BreedGalleryView: View {
 struct BreedCard: View {
     let breed: DogBreed
 
+    private var isUnlocked: Bool {
+        !breed.images.isEmpty
+    }
+
     private var photoCount: Int {
         breed.images.filter { !$0.isVideo }.count
     }
     
     private var videoCount: Int {
         breed.images.filter { $0.isVideo }.count
-    }
-
-    private var countSubtitle: String {
-        if breed.images.isEmpty {
-            return "0 Items"
-        } else if videoCount == 0 {
-            return "\(photoCount) Photo\(photoCount == 1 ? "" : "s")"
-        } else if photoCount == 0 {
-            return "\(videoCount) Video\(videoCount == 1 ? "" : "s")"
-        } else {
-            return "\(photoCount) Photo\(photoCount == 1 ? "" : "s") • \(videoCount) Video\(videoCount == 1 ? "" : "s")"
-        }
     }
 
     var body: some View {
@@ -148,22 +140,57 @@ struct BreedCard: View {
 
             // Info
             VStack(alignment: .leading, spacing: 4) {
-                Text(breed.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundColor(.primary)
+                HStack {
+                    Text(breed.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    if isUnlocked {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(.orange)
+                            .font(.subheadline)
+                    }
+                }
 
-                Text(countSubtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if !isUnlocked {
+                        Text("0 Photos")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        if videoCount == 0 {
+                            Text("\(photoCount) Photo\(photoCount == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else if photoCount == 0 {
+                            Text("\(videoCount) Video\(videoCount == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("\(photoCount) Photo\(photoCount == 1 ? "" : "s") • \(videoCount) Video\(videoCount == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Text("• Unlocked")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .fontWeight(.medium)
+                    }
+                }
+                .lineLimit(1)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground))
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 3)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isUnlocked ? Color.orange.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: isUnlocked ? 1.5 : 1)
+        )
+        .shadow(color: isUnlocked ? Color.orange.opacity(0.08) : Color.black.opacity(0.04), radius: 6, x: 0, y: 3)
     }
 
     @ViewBuilder
@@ -171,9 +198,9 @@ struct BreedCard: View {
         if breed.images.isEmpty {
             Color.gray.opacity(0.12)
                 .overlay {
-                    Image(systemName: "photo")
-                        .font(.title)
-                        .foregroundColor(.secondary.opacity(0.6))
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.orange.opacity(0.35))
                 }
         } else if breed.images.count == 1, let first = breed.images.first {
             singleThumbnail(first)

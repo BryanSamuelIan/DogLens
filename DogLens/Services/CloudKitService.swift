@@ -65,33 +65,41 @@ final class CloudKitService: ObservableObject {
         let recordID = CKRecord.ID(recordName: breedImage.id.uuidString)
         let record = CKRecord(recordType: Self.recordType, recordID: recordID)
         
+        // Write both mediaId and localID for cross-compatibility with Mac
         record["mediaId"] = breedImage.id.uuidString as CKRecordValue
+        record["localID"] = breedImage.id.uuidString as CKRecordValue
         record["breedName"] = breedName as CKRecordValue
         record["confidence"] = breedImage.confidence as CKRecordValue
         record["isVideo"] = (breedImage.isVideo ? 1 : 0) as CKRecordValue
         record["detectionDate"] = breedImage.detectionDate as CKRecordValue
         
+        var tempFiles: [URL] = []
+        
         // Save Original Image Asset
         if let originalImageURL = createTempFile(data: breedImage.imageData, ext: "jpg") {
             record["imageAsset"] = CKAsset(fileURL: originalImageURL)
+            tempFiles.append(originalImageURL)
         }
         
         // Save Annotated Image Asset
         if let annotatedData = breedImage.annotatedImageData,
            let annotatedImageURL = createTempFile(data: annotatedData, ext: "jpg") {
             record["annotatedImageAsset"] = CKAsset(fileURL: annotatedImageURL)
+            tempFiles.append(annotatedImageURL)
         }
         
         // Save Raw Video Asset
         if let videoData = breedImage.videoData,
            let videoURL = createTempFile(data: videoData, ext: "mp4") {
             record["videoAsset"] = CKAsset(fileURL: videoURL)
+            tempFiles.append(videoURL)
         }
         
         // Save Annotated Video Asset
         if let annotatedVideoData = breedImage.annotatedVideoData,
            let annotatedVideoURL = createTempFile(data: annotatedVideoData, ext: "mp4") {
             record["annotatedVideoAsset"] = CKAsset(fileURL: annotatedVideoURL)
+            tempFiles.append(annotatedVideoURL)
         }
         
         do {
@@ -99,37 +107,64 @@ final class CloudKitService: ObservableObject {
             self.syncState = .synced(Date())
             self.lastSyncDate = Date()
             self.backedUpItemCount += 1
+            
+            // Clean up temp files
+            for url in tempFiles {
+                try? FileManager.default.removeItem(at: url)
+            }
+            
+            print("[iOS CloudKit] Successfully uploaded BreedMedia \(breedImage.id)")
             return savedRecord.recordID
         } catch {
             self.syncState = .error(error.localizedDescription)
+            print("[iOS CloudKit] Upload failed: \(error)")
             throw error
         }
     }
     
-    // MARK: - Fetch Cloud Media
+    // MARK: - Fetch Cloud Media (With Cursor Pagination)
     
     func fetchCloudMedia() async throws -> [CKRecord] {
         syncState = .syncing
         
         let predicate = NSPredicate(value: true)
         let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-        query.sortDescriptors = [NSSortDescriptor(key: "detectionDate", ascending: false)]
+        
+        var records: [CKRecord] = []
         
         do {
-            let (matchResults, _) = try await database.records(matching: query)
-            var records: [CKRecord] = []
-            
+            var (matchResults, cursor) = try await database.records(matching: query)
             for (_, result) in matchResults {
                 if case .success(let record) = result {
                     records.append(record)
                 }
             }
             
+            // Paginate through all remaining records
+            while let currentCursor = cursor {
+                let (nextResults, nextCursor) = try await database.records(continuingMatchFrom: currentCursor)
+                for (_, result) in nextResults {
+                    if case .success(let record) = result {
+                        records.append(record)
+                    }
+                }
+                cursor = nextCursor
+            }
+            
+            // Sort in memory to avoid requiring a custom SORTABLE index in CloudKit console
+            records.sort {
+                let d1 = ($0["detectionDate"] as? Date) ?? $0.creationDate ?? .distantPast
+                let d2 = ($1["detectionDate"] as? Date) ?? $1.creationDate ?? .distantPast
+                return d1 > d2
+            }
+            
             self.syncState = .synced(Date())
             self.lastSyncDate = Date()
             self.backedUpItemCount = records.count
+            print("[iOS CloudKit] Fetched \(records.count) total records from CloudKit.")
             return records
         } catch {
+            print("[iOS CloudKit] Fetch failed on iOS: \(error)")
             self.syncState = .error(error.localizedDescription)
             throw error
         }
@@ -146,46 +181,79 @@ final class CloudKitService: ObservableObject {
     // MARK: - Item Count Query
     
     func refreshCloudItemCount() async {
-        let predicate = NSPredicate(value: true)
-        let query = CKQuery(recordType: Self.recordType, predicate: predicate)
-        
         do {
-            let (matchResults, _) = try await database.records(matching: query)
-            self.backedUpItemCount = matchResults.count
+            let records = try await fetchCloudMedia()
+            self.backedUpItemCount = records.count
             self.syncState = .synced(Date())
         } catch {
-            // Silently fallback if iCloud is offline or in simulator
             self.syncState = .idle
         }
     }
     
-    // MARK: - Sync with Local SwiftData
+    // MARK: - Sync with Local SwiftData (Resilient & Non-Dropping)
     
     func syncWithLocalDatabase(modelContext: ModelContext) async {
         guard let records = try? await fetchCloudMedia() else { return }
         
-        let fetchDescriptor = FetchDescriptor<DogBreed>()
-        guard let allBreeds = try? modelContext.fetch(fetchDescriptor) else { return }
+        // Fetch existing images to prevent duplication
+        let existingDescriptor = FetchDescriptor<BreedImage>()
+        let existingImages = (try? modelContext.fetch(existingDescriptor)) ?? []
+        let existingIDs = Set(existingImages.map { $0.id.uuidString.lowercased() })
+        
+        let breedDescriptor = FetchDescriptor<DogBreed>()
+        let allBreeds = (try? modelContext.fetch(breedDescriptor)) ?? []
+        var breedDict: [String: DogBreed] = [:]
+        for b in allBreeds {
+            breedDict[b.name.lowercased()] = b
+        }
+        
+        var downloadedCount = 0
         
         for record in records {
-            guard let mediaIdString = record["mediaId"] as? String,
-                  let mediaUUID = UUID(uuidString: mediaIdString),
-                  let breedName = record["breedName"] as? String,
-                  let confidence = record["confidence"] as? Double,
-                  let isVideoInt = record["isVideo"] as? Int64,
-                  let detectionDate = record["detectionDate"] as? Date,
-                  let imageAsset = record["imageAsset"] as? CKAsset,
-                  let imageFileURL = imageAsset.fileURL,
-                  let imageData = try? Data(contentsOf: imageFileURL) else {
+            // Support mediaId, localID, or recordName
+            let idString = (record["mediaId"] as? String)
+                ?? (record["localID"] as? String)
+                ?? record.recordID.recordName
+            
+            guard let mediaUUID = UUID(uuidString: idString) else {
+                print("[iOS CloudKit] Skipping record \(record.recordID.recordName): invalid UUID")
                 continue
             }
             
-            // Check if local breed exists
-            guard let breed = allBreeds.first(where: { $0.name == breedName }) else { continue }
+            if existingIDs.contains(mediaUUID.uuidString.lowercased()) {
+                continue
+            }
             
-            // Check if already in local database
-            let existingImages = breed.images
-            if existingImages.contains(where: { $0.id == mediaUUID }) {
+            let breedName = (record["breedName"] as? String) ?? "Unknown Breed"
+            
+            let confidence = (record["confidence"] as? Double)
+                ?? ((record["confidence"] as? NSNumber)?.doubleValue)
+                ?? 0.0
+            
+            let isVideo: Bool
+            if let vInt = record["isVideo"] as? Int64 {
+                isVideo = (vInt == 1)
+            } else if let vInt = record["isVideo"] as? Int {
+                isVideo = (vInt == 1)
+            } else if let vNum = record["isVideo"] as? NSNumber {
+                isVideo = (vNum.intValue == 1)
+            } else {
+                isVideo = false
+            }
+            
+            let detectionDate = (record["detectionDate"] as? Date)
+                ?? record.creationDate
+                ?? Date()
+            
+            var imageData = Data()
+            if let imageAsset = record["imageAsset"] as? CKAsset,
+               let imageFileURL = imageAsset.fileURL,
+               let data = try? Data(contentsOf: imageFileURL) {
+                imageData = data
+            }
+            
+            guard !imageData.isEmpty else {
+                print("[iOS CloudKit] Record \(mediaUUID) has empty image data, skipping.")
                 continue
             }
             
@@ -208,21 +276,39 @@ final class CloudKitService: ObservableObject {
                 annotatedVideoData = try? Data(contentsOf: url)
             }
             
+            // Find or create local breed
+            let breed: DogBreed
+            if let existing = breedDict[breedName.lowercased()] {
+                breed = existing
+            } else {
+                let newBreed = DogBreed(name: breedName)
+                modelContext.insert(newBreed)
+                breedDict[breedName.lowercased()] = newBreed
+                breed = newBreed
+            }
+            
             let newEntry = BreedImage(
                 id: mediaUUID,
                 imageData: imageData,
                 annotatedImageData: annotatedImageData,
                 videoData: videoData,
                 annotatedVideoData: annotatedVideoData,
-                isVideo: isVideoInt == 1,
+                isVideo: isVideo,
                 detectionDate: detectionDate,
                 confidence: confidence,
                 breed: breed
             )
+            modelContext.insert(newEntry)
             breed.images.append(newEntry)
+            downloadedCount += 1
         }
         
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            print("[iOS CloudKit] Successfully synced local database with \(downloadedCount) new items.")
+        } catch {
+            print("[iOS CloudKit] Failed to save SwiftData after sync: \(error)")
+        }
     }
     
     // MARK: - Helper: Create Temp File for CKAsset

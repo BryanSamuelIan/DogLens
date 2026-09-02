@@ -44,7 +44,10 @@ final class VideoInferenceViewModel: ObservableObject {
     var isNewBreed: Bool {
         allVideoDetections.contains { name, conf in
             guard conf >= 0.7 else { return false }
-            return breeds.first(where: { $0.name == name })?.imageCount == 0
+            if let match = breeds.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                return match.images.isEmpty
+            }
+            return true
         }
     }
 
