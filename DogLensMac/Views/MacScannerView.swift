@@ -20,6 +20,7 @@ enum InputMode: String, CaseIterable, Identifiable {
 
 struct MacScannerView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var allBreeds: [DogBreed]
     @State private var cameraManager = MacCameraManager()
     @State private var inputMode: InputMode = .fileDrop
 
@@ -441,6 +442,16 @@ struct MacScannerView: View {
         }
     }
 
+    private var hasEligibleDetection: Bool {
+        detections.contains(where: { $0.confidence >= 0.7 })
+    }
+
+    private var isNewBreedDetected: Bool {
+        detections.contains { result in
+            result.confidence >= 0.7 && isNewBreed(name: result.label)
+        }
+    }
+
     // MARK: - Detections Side Panel
     private var detectionsSidePanel: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -450,7 +461,7 @@ struct MacScannerView: View {
                 Text("Detection Results")
                     .font(.headline)
                 Spacer()
-                Text("\(detections.count) dog\(detections.count == 1 ? "" : "s")")
+                Text("\(detections.count) dog\(detections.count == 1 ? "" : "s") detected")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -461,20 +472,29 @@ struct MacScannerView: View {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "questionmark.circle")
-                        .font(.system(size: 36))
+                        .font(.system(size: 40))
                         .foregroundColor(.orange.opacity(0.6))
-                    Text("No dog breed recognized with high confidence.")
-                        .font(.subheadline)
+                    Text("No dog breed recognized.")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text("We couldn't find any dogs in this image. Make sure the dog is clearly visible and try again.")
+                        .font(.caption)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
                     Spacer()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding(.horizontal, 16)
             } else {
                 ScrollView {
                     VStack(spacing: 12) {
+                        // 1. List of all detected breeds with percentages
                         ForEach(detections) { item in
-                            VStack(alignment: .leading, spacing: 10) {
+                            let isHigh = item.confidence >= 0.7
+                            let isNew = isNewBreed(name: item.label)
+
+                            VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(item.label)
                                         .font(.headline)
@@ -482,36 +502,115 @@ struct MacScannerView: View {
                                     Spacer()
                                     Text("\(Int(item.confidence * 100))%")
                                         .font(.subheadline)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.orange)
+                                        .fontWeight(isHigh ? .bold : .medium)
+                                        .foregroundColor(isHigh ? .orange : .secondary)
                                 }
 
                                 ProgressView(value: Double(item.confidence), total: 1.0)
-                                    .tint(.orange)
+                                    .tint(isHigh ? .orange : .secondary)
+
+                                if isHigh && isNew {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "sparkles")
+                                            .font(.caption2)
+                                        Text("New Breed!")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                    }
+                                    .foregroundColor(.orange)
+                                    .padding(.top, 2)
+                                }
+                            }
+                            .padding(12)
+                            .background(isHigh ? Color.orange.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(isHigh ? Color.orange.opacity(0.4) : Color.primary.opacity(0.06), lineWidth: isHigh ? 1.5 : 1)
+                            )
+                        }
+
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        // 2. Actions (Per-Image, matching iOS concept)
+                        VStack(spacing: 10) {
+                            // Only show Breed Gallery option if at least one detection has confidence >= 70%
+                            if hasEligibleDetection {
+                                if isNewBreedDetected {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "sparkles")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                        Text("New Breed Discovered!")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(.orange)
+                                        Image(systemName: "sparkles")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange.opacity(0.15))
+                                    .clipShape(Capsule())
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                }
 
                                 Button {
-                                    saveDetectionToGallery(breedName: item.label, confidence: Double(item.confidence))
+                                    saveAllEligibleDetectionsToGallery()
                                 } label: {
-                                    HStack {
-                                        Image(systemName: "plus.circle.fill")
+                                    HStack(spacing: 6) {
+                                        if isNewBreedDetected {
+                                            Image(systemName: "star.fill")
+                                                .font(.subheadline)
+                                        } else {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.subheadline)
+                                        }
                                         Text("Save to Breed Gallery")
+                                            .font(.headline)
                                     }
-                                    .fontWeight(.semibold)
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
-                                    .background(Color.orange)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        isNewBreedDetected
+                                        ? LinearGradient(colors: [.orange, .pink], startPoint: .leading, endPoint: .trailing)
+                                        : LinearGradient(colors: [.orange, .orange], startPoint: .leading, endPoint: .trailing)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .shadow(
+                                        color: isNewBreedDetected ? .orange.opacity(0.5) : .clear,
+                                        radius: 8,
+                                        x: 0,
+                                        y: 4
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             }
-                            .padding(14)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
-                            )
+
+                            // Save to Device / Photos Button (Always Available)
+                            Button {
+                                let defaultBreed = detections.first?.label.replacingOccurrences(of: " ", with: "_") ?? "Dog"
+                                let filename = "DogLens_\(defaultBreed)_\(showOriginal ? "Original" : "Detection").jpg"
+                                let targetImage = showOriginal ? originalImage : (annotatedImage ?? originalImage)
+                                if let img = targetImage {
+                                    saveImageToFile(image: img, defaultName: filename)
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.down.doc.fill")
+                                    Text("Save to Device…")
+                                        .font(.headline)
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -622,42 +721,61 @@ struct MacScannerView: View {
         }
     }
 
-    private func saveDetectionToGallery(breedName: String, confidence: Double) {
+    private func isNewBreed(name: String) -> Bool {
+        guard let breed = allBreeds.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            return true
+        }
+        return breed.imageCount == 0
+    }
+
+    private func saveAllEligibleDetectionsToGallery() {
         guard let origImg = originalImage, let origData = origImg.jpegData else { return }
         let annData = annotatedImage?.jpegData
+        let eligible = detections.filter { $0.confidence >= 0.7 }
+        guard !eligible.isEmpty else {
+            savedAlertMessage = "No detections with ≥ 70% confidence to save."
+            showSavedAlert = true
+            return
+        }
 
         do {
             let descriptor = FetchDescriptor<DogBreed>()
             let allBreeds = try modelContext.fetch(descriptor)
-            let breed: DogBreed
+            var savedBreedNames: [String] = []
 
-            if let existing = allBreeds.first(where: { $0.name.lowercased() == breedName.lowercased() }) {
-                breed = existing
-            } else {
-                let newBreed = DogBreed(name: breedName)
-                modelContext.insert(newBreed)
-                breed = newBreed
+            for item in eligible {
+                let breedName = item.label
+                let breed: DogBreed
+                if let existing = allBreeds.first(where: { $0.name.caseInsensitiveCompare(breedName) == .orderedSame }) {
+                    breed = existing
+                } else {
+                    let newBreed = DogBreed(name: breedName)
+                    modelContext.insert(newBreed)
+                    breed = newBreed
+                }
+
+                let breedImage = BreedImage(
+                    imageData: origData,
+                    annotatedImageData: annData,
+                    isVideo: false,
+                    detectionDate: Date(),
+                    confidence: Double(item.confidence),
+                    breed: breed
+                )
+
+                modelContext.insert(breedImage)
+                breed.images.append(breedImage)
+                savedBreedNames.append(breed.name)
+
+                // Automatic 2-way background iCloud sync
+                Task {
+                    await MacCloudKitService.shared.uploadBreedImage(breedImage, breedName: breed.name)
+                }
             }
 
-            let breedImage = BreedImage(
-                imageData: origData,
-                annotatedImageData: annData,
-                isVideo: false,
-                detectionDate: Date(),
-                confidence: confidence,
-                breed: breed
-            )
-
-            modelContext.insert(breedImage)
-            breed.images.append(breedImage)
             try modelContext.save()
-
-            // Automatic 2-way background iCloud sync
-            Task {
-                await MacCloudKitService.shared.uploadBreedImage(breedImage, breedName: breed.name)
-            }
-
-            savedAlertMessage = "Saved \(breedName) to your Breed Gallery and synced with iCloud."
+            let namesList = savedBreedNames.joined(separator: ", ")
+            savedAlertMessage = "Saved \(namesList) to your Breed Gallery and synced with iCloud."
             showSavedAlert = true
         } catch {
             print("Failed to save to gallery: \(error)")
