@@ -208,7 +208,6 @@ final class AuthManager: ObservableObject {
         }
         return nil
     }
-    
     func checkiCloudStatus() async {
         do {
             let container = CKContainer(identifier: "iCloud.DogLens")
