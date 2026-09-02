@@ -311,13 +311,14 @@ struct MacScannerView: View {
     // MARK: - Result Image Display
     private var resultImageDisplay: some View {
         VStack(spacing: 14) {
-            HStack {
-                Picker("View", selection: $showOriginal) {
+            HStack(spacing: 12) {
+                Picker("", selection: $showOriginal) {
                     Text("Detection").tag(false)
                     Text("Original").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 180)
+                .labelsHidden()
+                .frame(width: 170)
 
                 Spacer()
 
@@ -342,7 +343,7 @@ struct MacScannerView: View {
                         detections = []
                     }
                 } label: {
-                    Label("Scan Another Image", systemImage: "arrow.counterclockwise")
+                    Label("Scan Another", systemImage: "arrow.counterclockwise")
                 }
                 .buttonStyle(.bordered)
             }
@@ -440,10 +441,14 @@ struct MacScannerView: View {
 
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url = url, let img = NSImage(contentsOf: url) {
-                    DispatchQueue.main.async {
-                        Task {
-                            await runDetection(on: img)
+                if let url = url {
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+                        DispatchQueue.main.async {
+                            Task { @MainActor in
+                                await self.runDetection(on: img)
+                            }
                         }
                     }
                 }
@@ -453,8 +458,8 @@ struct MacScannerView: View {
             _ = provider.loadObject(ofClass: NSImage.self) { img, _ in
                 if let img = img as? NSImage {
                     DispatchQueue.main.async {
-                        Task {
-                            await runDetection(on: img)
+                        Task { @MainActor in
+                            await self.runDetection(on: img)
                         }
                     }
                 }
@@ -508,10 +513,23 @@ struct MacScannerView: View {
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.jpeg, .png, .heic]
 
-        // Open in modal or sheet
-        if panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) {
-            Task {
-                await runDetection(on: image)
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            let access = url.startAccessingSecurityScopedResource()
+            defer {
+                if access {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            guard let data = try? Data(contentsOf: url),
+                  let image = NSImage(data: data) else {
+                return
+            }
+
+            Task { @MainActor in
+                await self.runDetection(on: image)
             }
         }
     }
@@ -574,12 +592,23 @@ struct MacScannerView: View {
             savePanel.directoryURL = downloadsURL
         }
 
-        if savePanel.runModal() == .OK, let url = savePanel.url {
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+
+            let access = url.startAccessingSecurityScopedResource()
+            defer {
+                if access {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
             if let data = image.jpegData {
                 do {
                     try data.write(to: url)
-                    savedAlertMessage = "Image successfully saved to:\n\(url.path)"
-                    showSavedAlert = true
+                    DispatchQueue.main.async {
+                        self.savedAlertMessage = "Image successfully saved to:\n\(url.path)"
+                        self.showSavedAlert = true
+                    }
                 } catch {
                     print("Failed to save image to file: \(error)")
                 }

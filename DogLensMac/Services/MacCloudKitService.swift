@@ -11,6 +11,7 @@ enum MacSyncStatus: Equatable {
 }
 
 @Observable
+@MainActor
 final class MacCloudKitService {
     static let shared = MacCloudKitService()
 
@@ -24,17 +25,19 @@ final class MacCloudKitService {
 
     private init() {}
 
-    func checkAccountStatus() {
-        container.accountStatus { [weak self] status, error in
-            DispatchQueue.main.async {
-                self?.isAvailable = (status == .available)
-            }
+    func checkAccountStatus() async {
+        do {
+            let status = try await container.accountStatus()
+            self.isAvailable = (status == .available)
+        } catch {
+            print("iCloud account status check failed on Mac: \(error)")
+            self.isAvailable = false
         }
     }
 
     // MARK: - Sync All Records from iCloud to SwiftData
-    @MainActor
     func syncFromCloud(modelContext: ModelContext) async {
+        guard isAvailable else { return }
         syncStatus = .syncing
 
         do {

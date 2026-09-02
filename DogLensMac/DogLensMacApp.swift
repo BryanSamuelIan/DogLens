@@ -8,13 +8,22 @@ struct DogLensMacApp: App {
             DogBreed.self,
             BreedImage.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Explicitly set cloudKitDatabase to .none so SwiftData uses clean local storage
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .none
+        )
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            seedPredefinedBreedsIfNeeded(context: container.mainContext)
             return container
         } catch {
+            print("Failed to load ModelContainer with default config: \(error). Attempting in-memory fallback...")
+            let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            if let memoryContainer = try? ModelContainer(for: schema, configurations: [memoryConfig]) {
+                return memoryContainer
+            }
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
@@ -28,21 +37,6 @@ struct DogLensMacApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             SidebarCommands()
-        }
-    }
-
-    private static func seedPredefinedBreedsIfNeeded(context: ModelContext) {
-        do {
-            let descriptor = FetchDescriptor<DogBreed>()
-            let existingBreeds = try context.fetch(descriptor)
-            if existingBreeds.isEmpty {
-                for name in DogBreed.predefinedBreeds {
-                    context.insert(DogBreed(name: name))
-                }
-                try context.save()
-            }
-        } catch {
-            print("Failed to seed predefined breeds on Mac: \(error)")
         }
     }
 }

@@ -17,8 +17,10 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
     var authorizationStatus: AVAuthorizationStatus = .notDetermined
 
     let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.doglens.macCameraSessionQueue")
     private let photoOutput = AVCapturePhotoOutput()
     private var currentInput: AVCaptureDeviceInput?
+    private var isConfigured = false
 
     private var photoContinuation: CheckedContinuation<NSImage, Error>?
 
@@ -37,14 +39,13 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
             self.authorizationStatus = status
             if status == .authorized {
                 self.discoverDevices()
-                self.startSession()
             } else if status == .notDetermined {
                 AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                     DispatchQueue.main.async {
-                        self?.authorizationStatus = granted ? .authorized : .denied
+                        guard let self = self else { return }
+                        self.authorizationStatus = granted ? .authorized : .denied
                         if granted {
-                            self?.discoverDevices()
-                            self?.startSession()
+                            self.discoverDevices()
                         }
                     }
                 }
@@ -77,29 +78,30 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
         guard let device = availableDevices.first(where: { $0.id == id })?.device else { return }
         self.selectedDeviceID = id
 
-        session.beginConfiguration()
-        if let currentInput = currentInput {
-            session.removeInput(currentInput)
-        }
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.session.beginConfiguration()
+            if let currentInput = self.currentInput {
+                self.session.removeInput(currentInput)
+                self.currentInput = nil
+            }
 
-        do {
-            let newInput = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(newInput) {
-                session.addInput(newInput)
+            if let newInput = try? AVCaptureDeviceInput(device: device),
+               self.session.canAddInput(newInput) {
+                self.session.addInput(newInput)
                 self.currentInput = newInput
             }
-        } catch {
-            print("Failed to set camera device input: \(error)")
+            self.session.commitConfiguration()
         }
-        session.commitConfiguration()
     }
 
     func startSession() {
         guard authorizationStatus == .authorized else { return }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            if self.session.inputs.isEmpty {
+
+            if !self.isConfigured {
                 self.session.beginConfiguration()
                 self.session.sessionPreset = .photo
 
@@ -118,19 +120,21 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
                 }
 
                 self.session.commitConfiguration()
+                self.isConfigured = true
             }
 
             if !self.session.isRunning {
                 self.session.startRunning()
+                let running = self.session.isRunning
                 DispatchQueue.main.async {
-                    self.isRunning = true
+                    self.isRunning = running
                 }
             }
         }
     }
 
     func stopSession() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        sessionQueue.async { [weak self] in
             guard let self = self else { return }
             if self.session.isRunning {
                 self.session.stopRunning()
@@ -147,9 +151,15 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            self.photoContinuation = continuation
-            let settings = AVCapturePhotoSettings()
-            self.photoOutput.capturePhoto(with: settings, delegate: self)
+            sessionQueue.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(throwing: NSError(domain: "CameraError", code: -3, userInfo: [NSLocalizedDescriptionKey: "Camera manager deallocated"]))
+                    return
+                }
+                self.photoContinuation = continuation
+                let settings = AVCapturePhotoSettings()
+                self.photoOutput.capturePhoto(with: settings, delegate: self)
+            }
         }
     }
 
@@ -175,21 +185,49 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
 // MARK: - AppKit Camera Preview View Representable for SwiftUI
 
+final class MacCameraPreviewNSView: NSView {
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+
+    func setSession(_ session: AVCaptureSession) {
+        if previewLayer == nil {
+            let layer = AVCaptureVideoPreviewLayer(session: session)
+            layer.videoGravity = .resizeAspectFill
+            self.layer?.addSublayer(layer)
+            self.previewLayer = layer
+        } else {
+            previewLayer?.session = session
+        }
+        previewLayer?.frame = bounds
+    }
+
+    override func layout() {
+        super.layout()
+        previewLayer?.frame = bounds
+    }
+}
+
 struct MacCameraPreviewView: NSViewRepresentable {
     let session: AVCaptureSession
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer = previewLayer
+    func makeNSView(context: Context) -> MacCameraPreviewNSView {
+        let view = MacCameraPreviewNSView()
+        view.setSession(session)
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let previewLayer = nsView.layer as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = nsView.bounds
-        }
+    func updateNSView(_ nsView: MacCameraPreviewNSView, context: Context) {
+        nsView.setSession(session)
     }
 }

@@ -286,7 +286,11 @@ struct MacFullScreenMediaView: View {
             savePanel.directoryURL = downloadsURL
         }
 
-        if savePanel.runModal() == .OK, let url = savePanel.url {
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+
             if let data = image.jpegData {
                 try? data.write(to: url)
             }

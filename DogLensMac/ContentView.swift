@@ -53,9 +53,31 @@ struct ContentView: View {
             .frame(minWidth: 750, minHeight: 550)
         }
         .task {
-            cloudKitService.checkAccountStatus()
-            // Initial background iCloud sync on startup
-            await cloudKitService.syncFromCloud(modelContext: modelContext)
+            seedBreedsIfNeeded()
+            await cloudKitService.checkAccountStatus()
+            if cloudKitService.isAvailable {
+                await cloudKitService.syncFromCloud(modelContext: modelContext)
+            }
+        }
+    }
+
+    private func seedBreedsIfNeeded() {
+        do {
+            let descriptor = FetchDescriptor<DogBreed>()
+            let existingBreeds = try modelContext.fetch(descriptor)
+            let existingNames = Set(existingBreeds.map { $0.name.lowercased() })
+            var didInsert = false
+            for name in DogBreed.predefinedBreeds {
+                if !existingNames.contains(name.lowercased()) {
+                    modelContext.insert(DogBreed(name: name))
+                    didInsert = true
+                }
+            }
+            if didInsert {
+                try modelContext.save()
+            }
+        } catch {
+            print("Failed to seed predefined breeds on Mac: \(error)")
         }
     }
 }

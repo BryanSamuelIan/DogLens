@@ -2,11 +2,19 @@ import AppKit
 import CoreGraphics
 import CoreImage
 import VideoToolbox
+import ImageIO
 
 extension NSImage {
     var cgImage: CGImage? {
         var rect = CGRect(origin: .zero, size: self.size)
-        return self.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        if let cg = self.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            return cg
+        }
+        if let tiffData = self.tiffRepresentation,
+           let source = CGImageSourceCreateWithData(tiffData as CFData, nil) {
+            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        }
+        return nil
     }
 
     private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -27,8 +35,8 @@ extension NSImage {
         let targetWidth = CGFloat(width)
         let targetHeight = CGFloat(height)
 
-        let scaleX = targetWidth / ciImage.extent.width
-        let scaleY = targetHeight / ciImage.extent.height
+        let scaleX = targetWidth / max(ciImage.extent.width, 1.0)
+        let scaleY = targetHeight / max(ciImage.extent.height, 1.0)
 
         let transform = CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y)
             .scaledBy(x: scaleX, y: scaleY)
