@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var authManager = AuthManager.shared
     @StateObject private var cloudService = CloudKitService.shared
     
@@ -28,6 +30,8 @@ struct ContentView: View {
         .environmentObject(cloudService)
         .task {
             await authManager.checkiCloudStatus()
+            await cloudService.syncWithLocalDatabase(modelContext: modelContext)
+            await cloudService.refreshCloudItemCount()
         }
     }
 }

@@ -37,109 +37,13 @@ struct MacScannerView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // Top Header Bar
-                HStack(spacing: 16) {
-                    Picker("Mode", selection: $inputMode) {
-                        ForEach(InputMode.allCases) { mode in
-                            Label(mode.rawValue, systemImage: mode.icon).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 320)
-                    .tint(.orange)
-
-                    Button {
-                        openFilePicker()
-                    } label: {
-                        Label("Upload from File…", systemImage: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Spacer()
-
-                    if inputMode == .webcam && !cameraManager.availableDevices.isEmpty {
-                        Menu {
-                            ForEach(cameraManager.availableDevices) { dev in
-                                Button {
-                                    cameraManager.selectDevice(id: dev.id)
-                                } label: {
-                                    HStack {
-                                        Text(dev.name)
-                                        if dev.id == cameraManager.selectedDeviceID {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label(
-                                cameraManager.availableDevices.first(where: { $0.id == cameraManager.selectedDeviceID })?.name ?? "Select Camera",
-                                systemImage: "video.fill"
-                            )
-                        }
-                        .menuStyle(.borderedButton)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
-                .background(Color(NSColor.windowBackgroundColor))
-
+                topHeaderBar
                 Divider()
-
-                // Main Content Area
-                HStack(spacing: 0) {
-                    // Left: Input / Preview Zone
-                    VStack {
-                        if let _ = originalImage {
-                            resultImageDisplay
-                        } else {
-                            if inputMode == .webcam {
-                                webcamPreviewZone
-                            } else {
-                                dropzoneArea
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(24)
-
-                    // Right: Detections & Actions Panel
-                    if originalImage != nil {
-                        Divider()
-                        detectionsSidePanel
-                            .frame(width: 340)
-                    }
-                }
+                mainContentArea
             }
 
-            // Global Drag & Drop Highlight Overlay
             if isDropTargeted {
-                ZStack {
-                    Color.black.opacity(0.45)
-                        .ignoresSafeArea()
-
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 4, dash: [10]))
-                        .background(Color.orange.opacity(0.12))
-                        .padding(24)
-
-                    VStack(spacing: 16) {
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 64))
-                            .foregroundColor(.orange)
-
-                        Text("Drop Image to Scan & Detect Dogs")
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-
-                        Text("Supports JPG, PNG, and HEIC files")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                }
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: isDropTargeted)
+                dropOverlay
             }
         }
         .toolbar {
@@ -155,26 +59,141 @@ struct MacScannerView: View {
         .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .task {
+            await MacCloudKitService.shared.syncFromCloud(modelContext: modelContext)
+        }
         .onAppear {
-            cameraManager.setup()
-            if inputMode == .webcam {
-                cameraManager.startSession()
-            }
+            setupCamera()
         }
         .onDisappear {
             cameraManager.stopSession()
         }
         .onChange(of: inputMode) { _, newMode in
-            if newMode == .webcam {
-                cameraManager.startSession()
-            } else {
-                cameraManager.stopSession()
-            }
+            handleInputModeChange(to: newMode)
         }
         .alert("Notice", isPresented: $showSavedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(savedAlertMessage ?? "")
+        }
+    }
+
+    // MARK: - Top Header Bar
+    private var topHeaderBar: some View {
+        HStack(spacing: 16) {
+            Picker("Mode", selection: $inputMode) {
+                ForEach(InputMode.allCases) { mode in
+                    Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 320)
+            .tint(.orange)
+
+            Button {
+                openFilePicker()
+            } label: {
+                Label("Upload from File…", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+
+            Spacer()
+
+            if inputMode == .webcam && !cameraManager.availableDevices.isEmpty {
+                cameraDeviceMenu
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var cameraDeviceMenu: some View {
+        Menu {
+            ForEach(cameraManager.availableDevices) { dev in
+                Button {
+                    cameraManager.selectDevice(id: dev.id)
+                } label: {
+                    HStack {
+                        Text(dev.name)
+                        if dev.id == cameraManager.selectedDeviceID {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            let activeName = cameraManager.availableDevices.first(where: { $0.id == cameraManager.selectedDeviceID })?.name ?? "Select Camera"
+            Label(activeName, systemImage: "video.fill")
+        }
+        .menuStyle(.borderedButton)
+    }
+
+    // MARK: - Main Content Area
+    private var mainContentArea: some View {
+        HStack(spacing: 0) {
+            VStack {
+                if originalImage != nil {
+                    resultImageDisplay
+                } else if inputMode == .webcam {
+                    webcamPreviewZone
+                } else {
+                    dropzoneArea
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(24)
+
+            if originalImage != nil {
+                Divider()
+                detectionsSidePanel
+                    .frame(width: 340)
+            }
+        }
+    }
+
+    // MARK: - Drop Overlay
+    private var dropOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.orange, style: StrokeStyle(lineWidth: 4, dash: [10]))
+                .background(Color.orange.opacity(0.12))
+                .padding(24)
+
+            VStack(spacing: 16) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 64))
+                    .foregroundColor(.orange)
+
+                Text("Drop Image to Scan & Detect Dogs")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+
+                Text("Supports JPG, PNG, and HEIC files")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.85))
+            }
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: isDropTargeted)
+    }
+
+    private func setupCamera() {
+        cameraManager.setup()
+        if inputMode == .webcam {
+            cameraManager.startSession()
+        }
+    }
+
+    private func handleInputModeChange(to newMode: InputMode) {
+        if newMode == .webcam {
+            cameraManager.startSession()
+        } else {
+            cameraManager.stopSession()
         }
     }
 

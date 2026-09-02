@@ -68,6 +68,10 @@ final class MacCloudKitService {
     }
 
     // MARK: - Sync All Records from iCloud to SwiftData
+    func syncWithLocalDatabase(modelContext: ModelContext) async {
+        await syncFromCloud(modelContext: modelContext)
+    }
+
     func syncFromCloud(modelContext: ModelContext) async {
         if !isAvailable {
             await checkAccountStatus()

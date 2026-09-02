@@ -26,10 +26,14 @@ final class ResultViewModel: ObservableObject {
         self.annotatedImage = Self.createAnnotatedImage(from: image, with: results)
     }
 
-    // Returns true if ANY detected breed has never been saved to the gallery before
+    // Returns true if ANY detected breed (with confidence >= 0.7) has never been saved to the gallery before
     var isNewBreed: Bool {
         detectionResults.contains { result in
-            breeds.first(where: { $0.name == result.label })?.imageCount == 0
+            guard result.confidence >= 0.7 else { return false }
+            if let match = breeds.first(where: { $0.name.caseInsensitiveCompare(result.label) == .orderedSame }) {
+                return match.images.isEmpty
+            }
+            return true
         }
     }
 
