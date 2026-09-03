@@ -8,20 +8,32 @@ import AppKit
 import SwiftData
 import UniformTypeIdentifiers
 import AVFoundation
+import Combine
 
 struct MacScannerView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allBreeds: [DogBreed]
-    @State private var cameraManager = MacCameraManager()
-    @State private var inputMode: InputMode = .fileDrop
 
+    // Camera & Live Scanner Services
+    @State private var cameraManager = MacCameraManager()
+    @StateObject private var liveScannerVM = MacLiveScannerViewModel()
+
+    // Mode States
+    @State private var scannerMode: ScannerMode = .photo
+    @State private var inputSource: MediaInputSource = .camera
     @State private var isDropTargeted = false
-    @State private var isProcessing = false
+
+    // Photo Scan State
+    @State private var isProcessingPhoto = false
     @State private var originalImage: NSImage?
     @State private var annotatedImage: NSImage?
-    @State private var detections: [DetectionResult] = []
-    @State private var showOriginal = false
+    @State private var photoDetections: [DetectionResult] = []
+    @State private var showOriginalPhoto = false
 
+    // Video Scan State
+    @StateObject private var videoInferenceVMHolder = VideoInferenceHolder()
+
+    // Feedback & Alerts
     @State private var savedAlertMessage: String?
     @State private var showSavedAlert = false
 
@@ -29,16 +41,19 @@ struct MacScannerView: View {
         ZStack {
             VStack(spacing: 0) {
                 MacScannerHeader(
-                    inputMode: $inputMode,
+                    scannerMode: $scannerMode,
+                    inputSource: $inputSource,
                     cameraManager: cameraManager,
                     onUploadFile: { openFilePicker() }
                 )
+
                 Divider()
+
                 mainContentArea
             }
 
             if isDropTargeted {
-                MacDropOverlayView(isTargeted: isDropTargeted)
+                MacDropOverlayView(isTargeted: isDropTargeted, scannerMode: scannerMode)
             }
         }
         .toolbar {
@@ -46,12 +61,15 @@ struct MacScannerView: View {
                 Button {
                     openFilePicker()
                 } label: {
-                    Label("Upload from File", systemImage: "square.and.arrow.up")
+                    Label(
+                        scannerMode == .video ? "Upload Video" : "Upload File",
+                        systemImage: "square.and.arrow.up"
+                    )
                 }
-                .help("Upload and detect dog image from Mac files")
+                .help(scannerMode == .video ? "Upload and detect dog video from Mac files" : "Upload and detect dog photo from Mac files")
             }
         }
-        .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
+        .onDrop(of: [.image, .movie, .fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
         .task {
@@ -63,8 +81,11 @@ struct MacScannerView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
-        .onChange(of: inputMode) { _, newMode in
-            handleInputModeChange(to: newMode)
+        .onChange(of: scannerMode) { _, newMode in
+            handleModeChange(to: newMode)
+        }
+        .onChange(of: inputSource) { _, newSource in
+            handleInputSourceChange(to: newSource)
         }
         .alert("Notice", isPresented: $showSavedAlert) {
             Button("OK", role: .cancel) {}
@@ -74,30 +95,43 @@ struct MacScannerView: View {
     }
 
     // MARK: - Main Content Area
+    @ViewBuilder
     private var mainContentArea: some View {
+        switch scannerMode {
+        case .photo:
+            photoContentView
+        case .video:
+            videoContentView
+        case .live:
+            liveContentView
+        }
+    }
+
+    // MARK: - 1. Photo Mode Content
+    private var photoContentView: some View {
         HStack(spacing: 0) {
             VStack {
                 if originalImage != nil {
                     MacResultDisplayView(
-                        showOriginal: $showOriginal,
+                        showOriginal: $showOriginalPhoto,
                         originalImage: originalImage,
                         annotatedImage: annotatedImage,
-                        onSaveToFile: { triggerSaveToFile() },
-                        onScanAnother: { resetScanState() }
+                        onSaveToFile: { triggerSavePhotoToFile() },
+                        onScanAnother: { resetPhotoScanState() }
                     )
-                } else if inputMode == .webcam {
+                } else if inputSource == .camera {
                     MacWebcamZoneView(
                         cameraManager: cameraManager,
-                        isProcessing: isProcessing,
-                        onCapture: { Task { await captureAndDetect() } },
+                        isProcessing: isProcessingPhoto,
+                        onCapture: { Task { await captureAndDetectPhoto() } },
                         onUploadFile: { openFilePicker() }
                     )
                 } else {
                     MacDropzoneView(
                         isDropTargeted: isDropTargeted,
-                        isProcessing: isProcessing,
+                        isProcessing: isProcessingPhoto,
                         onUploadFile: { openFilePicker() },
-                        onSwitchToWebcam: { inputMode = .webcam }
+                        onSwitchToWebcam: { inputSource = .camera }
                     )
                 }
             }
@@ -107,86 +141,118 @@ struct MacScannerView: View {
             if originalImage != nil {
                 Divider()
                 MacDetectionsPanel(
-                    detections: detections,
+                    detections: photoDetections,
                     allBreeds: allBreeds,
-                    onSaveToGallery: { saveToBreedGallery() },
-                    onSaveToDevice: { triggerSaveToFile() }
+                    onSaveToGallery: { savePhotoToBreedGallery() },
+                    onSaveToDevice: { triggerSavePhotoToFile() }
                 )
                 .frame(width: 340)
             }
         }
     }
 
-    // MARK: - Actions & Handlers
+    // MARK: - 2. Video Mode Content
+    @ViewBuilder
+    private var videoContentView: some View {
+        if let vm = videoInferenceVMHolder.vm, vm.annotatedVideoURL != nil {
+            MacVideoResultView(
+                vm: vm,
+                allBreeds: allBreeds,
+                onSaveToGallery: {
+                    vm.saveToBreedGallery(modelContext: modelContext, allBreeds: allBreeds)
+                },
+                onSaveToFile: { showOriginal in
+                    triggerSaveVideoToFile(vm: vm, showOriginal: showOriginal)
+                },
+                onSaveToPhotos: {
+                    vm.saveToPhotos()
+                },
+                onScanAnother: {
+                    resetVideoScanState()
+                }
+            )
+        } else {
+            VStack {
+                let isInferring = videoInferenceVMHolder.vm?.isInferring ?? false
+                let progress = videoInferenceVMHolder.vm?.progress ?? 0.0
+
+                MacVideoZoneView(
+                    inputSource: inputSource,
+                    cameraManager: cameraManager,
+                    isDropTargeted: isDropTargeted,
+                    isInferring: isInferring,
+                    inferenceProgress: progress,
+                    onStartRecording: { startWebcamRecording() },
+                    onStopRecording: { stopWebcamRecording() },
+                    onUploadFile: { openFilePicker() },
+                    onSwitchToCamera: { inputSource = .camera }
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(24)
+        }
+    }
+
+    // MARK: - 3. Live Scanner Mode Content
+    private var liveContentView: some View {
+        VStack {
+            MacLiveScannerOverlayView(
+                cameraManager: cameraManager,
+                liveViewModel: liveScannerVM
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+    }
+
+    // MARK: - Camera Lifecycle Handlers
     private func setupCamera() {
         cameraManager.setup()
-        if inputMode == .webcam {
+        if scannerMode == .live || inputSource == .camera {
             cameraManager.startSession()
         }
     }
 
-    private func handleInputModeChange(to newMode: InputMode) {
-        if newMode == .webcam {
+    private func handleModeChange(to newMode: ScannerMode) {
+        if newMode == .live {
+            cameraManager.startSession()
+        } else if inputSource == .camera {
             cameraManager.startSession()
         } else {
             cameraManager.stopSession()
         }
     }
 
-    private func resetScanState() {
+    private func handleInputSourceChange(to newSource: MediaInputSource) {
+        if scannerMode == .live || newSource == .camera {
+            cameraManager.startSession()
+        } else {
+            cameraManager.stopSession()
+        }
+    }
+
+    // MARK: - Photo Detection Logic
+    private func resetPhotoScanState() {
         withAnimation {
             originalImage = nil
             annotatedImage = nil
-            detections = []
+            photoDetections = []
         }
     }
 
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-
-        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url = url {
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
-                        DispatchQueue.main.async {
-                            Task { @MainActor in
-                                await self.runDetection(on: img)
-                            }
-                        }
-                    }
-                }
-            }
-            return true
-        } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            _ = provider.loadObject(ofClass: NSImage.self) { img, _ in
-                if let img = img as? NSImage {
-                    DispatchQueue.main.async {
-                        Task { @MainActor in
-                            await self.runDetection(on: img)
-                        }
-                    }
-                }
-            }
-            return true
-        }
-        return false
-    }
-
-    private func captureAndDetect() async {
-        isProcessing = true
+    private func captureAndDetectPhoto() async {
+        isProcessingPhoto = true
         do {
             let photo = try await cameraManager.capturePhoto()
-            await runDetection(on: photo)
+            await runPhotoDetection(on: photo)
         } catch {
             print("Capture failed: \(error)")
-            isProcessing = false
+            isProcessingPhoto = false
         }
     }
 
-    private func runDetection(on image: NSImage) async {
-        isProcessing = true
+    private func runPhotoDetection(on image: NSImage) async {
+        isProcessingPhoto = true
         do {
             let results = try await MacModelService.shared.detectDogs(in: image)
             let annotated = MacModelService.shared.renderAnnotatedImage(image: image, detections: results)
@@ -194,58 +260,27 @@ struct MacScannerView: View {
             withAnimation {
                 self.originalImage = image
                 self.annotatedImage = annotated
-                self.detections = results
-                self.isProcessing = false
+                self.photoDetections = results
+                self.isProcessingPhoto = false
             }
         } catch {
             print("Detection error: \(error)")
             withAnimation {
                 self.originalImage = image
                 self.annotatedImage = nil
-                self.detections = []
-                self.isProcessing = false
+                self.photoDetections = []
+                self.isProcessingPhoto = false
             }
         }
     }
 
-    private func openFilePicker() {
-        let panel = NSOpenPanel()
-        panel.title = "Select Dog Photo"
-        panel.message = "Choose an image to scan with DogLens"
-        panel.prompt = "Choose Image"
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowedContentTypes = [.jpeg, .png, .heic]
-
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-
-            let access = url.startAccessingSecurityScopedResource()
-            defer {
-                if access {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            guard let data = try? Data(contentsOf: url),
-                  let image = NSImage(data: data) else {
-                return
-            }
-
-            Task { @MainActor in
-                await self.runDetection(on: image)
-            }
-        }
-    }
-
-    private func saveToBreedGallery() {
+    private func savePhotoToBreedGallery() {
         guard let origImg = originalImage else { return }
         do {
             let savedNames = try MacGallerySaver.saveEligibleDetections(
                 originalImage: origImg,
                 annotatedImage: annotatedImage,
-                detections: detections,
+                detections: photoDetections,
                 modelContext: modelContext
             )
             if savedNames.isEmpty {
@@ -260,17 +295,17 @@ struct MacScannerView: View {
         }
     }
 
-    private func triggerSaveToFile() {
-        let targetImg = showOriginal ? originalImage : (annotatedImage ?? originalImage)
+    private func triggerSavePhotoToFile() {
+        let targetImg = showOriginalPhoto ? originalImage : (annotatedImage ?? originalImage)
         guard let img = targetImg else { return }
-        let defaultBreed = detections.first?.label.replacingOccurrences(of: " ", with: "_") ?? "Dog"
-        let filename = "DogLens_\(defaultBreed)_\(showOriginal ? "Original" : "Detection").jpg"
+        let defaultBreed = photoDetections.first?.label.replacingOccurrences(of: " ", with: "_") ?? "Dog"
+        let filename = "DogLens_\(defaultBreed)_\(showOriginalPhoto ? "Original" : "Detection").jpg"
 
         MacFileExporter.saveImage(image: img, defaultName: filename) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let url):
-                    self.savedAlertMessage = "Image successfully saved to:\n\(url.path)"
+                    self.savedAlertMessage = "Photo successfully saved to:\n\(url.path)"
                     self.showSavedAlert = true
                 case .failure(let error):
                     print("Failed to save image to file: \(error)")
@@ -278,5 +313,155 @@ struct MacScannerView: View {
             }
         }
     }
+
+    // MARK: - Video Detection Logic
+    private func resetVideoScanState() {
+        withAnimation {
+            videoInferenceVMHolder.vm = nil
+        }
+        if inputSource == .camera {
+            cameraManager.startSession()
+        }
+    }
+
+    private func startWebcamRecording() {
+        cameraManager.startRecordingVideo { result in
+            switch result {
+            case .success(let url):
+                Task { @MainActor in
+                    self.processVideoURL(url)
+                }
+            case .failure(let error):
+                print("Recording failed: \(error)")
+            }
+        }
+    }
+
+    private func stopWebcamRecording() {
+        cameraManager.stopRecordingVideo()
+    }
+
+    private func processVideoURL(_ url: URL) {
+        let vm = MacVideoInferenceViewModel(videoURL: url)
+        self.videoInferenceVMHolder.vm = vm
+        Task {
+            await vm.runInference()
+        }
+    }
+
+    private func triggerSaveVideoToFile(vm: MacVideoInferenceViewModel, showOriginal: Bool) {
+        let targetURL = (showOriginal ? nil : vm.annotatedVideoURL) ?? vm.sourceURL
+        let defaultBreed = vm.trackedDogs.first?.breedName.replacingOccurrences(of: " ", with: "_")
+            ?? vm.allVideoDetections.keys.first?.replacingOccurrences(of: " ", with: "_")
+            ?? "Dog"
+        let filename = "DogLens_\(defaultBreed)_\(showOriginal ? "Original" : "Detection").mp4"
+
+        MacFileExporter.saveVideo(sourceURL: targetURL, defaultName: filename) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let destURL):
+                    self.savedAlertMessage = "Video successfully saved to:\n\(destURL.path)"
+                    self.showSavedAlert = true
+                case .failure(let error):
+                    print("Failed to save video: \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - File Picker & Drop Handlers
+    private func openFilePicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+
+        if scannerMode == .video {
+            panel.title = "Select Dog Video"
+            panel.message = "Choose a video to scan with DogLens"
+            panel.prompt = "Choose Video"
+            panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, .movie]
+        } else {
+            panel.title = "Select Dog Photo"
+            panel.message = "Choose an image to scan with DogLens"
+            panel.prompt = "Choose Image"
+            panel.allowedContentTypes = [.jpeg, .png, .heic]
+        }
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            let access = url.startAccessingSecurityScopedResource()
+            defer {
+                if access {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            if self.scannerMode == .video {
+                self.processVideoURL(url)
+            } else {
+                guard let data = try? Data(contentsOf: url),
+                      let image = NSImage(data: data) else { return }
+                Task { @MainActor in
+                    await self.runPhotoDetection(on: image)
+                }
+            }
+        }
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url = url else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+
+                let ext = url.pathExtension.lowercased()
+                let isVideoExt = ["mp4", "mov", "m4v", "avi", "mkv"].contains(ext)
+
+                DispatchQueue.main.async {
+                    if isVideoExt {
+                        self.scannerMode = .video
+                        self.processVideoURL(url)
+                    } else if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+                        self.scannerMode = .photo
+                        Task { @MainActor in
+                            await self.runPhotoDetection(on: img)
+                        }
+                    }
+                }
+            }
+            return true
+        } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url = url else { return }
+                DispatchQueue.main.async {
+                    self.scannerMode = .video
+                    self.processVideoURL(url)
+                }
+            }
+            return true
+        } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            _ = provider.loadObject(ofClass: NSImage.self) { img, _ in
+                guard let img = img as? NSImage else { return }
+                DispatchQueue.main.async {
+                    self.scannerMode = .photo
+                    Task { @MainActor in
+                        await self.runPhotoDetection(on: img)
+                    }
+                }
+            }
+            return true
+        }
+
+        return false
+    }
 }
 
+// MARK: - State Holder for Observable Object
+final class VideoInferenceHolder: ObservableObject {
+    @Published var vm: MacVideoInferenceViewModel?
+}

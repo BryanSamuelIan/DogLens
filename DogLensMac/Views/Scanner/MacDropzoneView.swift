@@ -24,7 +24,7 @@ struct MacDropzoneView: View {
                 )
 
             VStack(spacing: 22) {
-                // iOS App Logo / Viewfinder
+                // DogLens Viewfinder Icon
                 Image(systemName: "viewfinder.circle.fill")
                     .resizable()
                     .scaledToFit()
@@ -61,7 +61,7 @@ struct MacDropzoneView: View {
                     Button(action: onSwitchToWebcam) {
                         HStack(spacing: 8) {
                             Image(systemName: "camera.fill")
-                            Text("Live Camera")
+                            Text("Webcam Snapshot")
                         }
                         .font(.headline)
                         .foregroundColor(.blue)

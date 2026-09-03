@@ -1,3 +1,8 @@
+//
+//  MacCameraManager.swift
+//  DogLensMac
+//
+
 import Foundation
 import AVFoundation
 import AppKit
@@ -10,19 +15,32 @@ struct CameraDevice: Identifiable, Hashable {
 }
 
 @Observable
-final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
+final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     var availableDevices: [CameraDevice] = []
     var selectedDeviceID: String = ""
     var isRunning: Bool = false
+    var isRecording: Bool = false
+    var recordingDuration: TimeInterval = 0.0
     var authorizationStatus: AVAuthorizationStatus = .notDetermined
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.doglens.macCameraSessionQueue")
+    private let videoDataOutputQueue = DispatchQueue(label: "com.doglens.macVideoDataOutputQueue", qos: .userInitiated)
+    
     private let photoOutput = AVCapturePhotoOutput()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private let videoDataOutput = AVCaptureVideoDataOutput()
+    
     private var currentInput: AVCaptureDeviceInput?
     private var isConfigured = false
-
+    
+    private var recordingTimer: Timer?
+    private var recordingStartDate: Date?
+    private var recordingCompletion: ((Result<URL, Error>) -> Void)?
     private var photoContinuation: CheckedContinuation<NSImage, Error>?
+    
+    // Live Frame Streaming Callback
+    var onSampleBufferReceived: ((CMSampleBuffer) -> Void)?
 
     override init() {
         super.init()
@@ -118,7 +136,7 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
             if !self.isConfigured {
                 self.session.beginConfiguration()
-                self.session.sessionPreset = .photo
+                self.session.sessionPreset = .high
 
                 let targetDevice = self.availableDevices.first(where: { $0.id == self.selectedDeviceID })?.device
                     ?? AVCaptureDevice.default(for: .video)
@@ -132,6 +150,20 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
                 if self.session.canAddOutput(self.photoOutput) {
                     self.session.addOutput(self.photoOutput)
+                }
+                
+                if self.session.canAddOutput(self.movieOutput) {
+                    self.session.addOutput(self.movieOutput)
+                }
+                
+                self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+                self.videoDataOutput.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                ]
+                self.videoDataOutput.setSampleBufferDelegate(self, queue: self.videoDataOutputQueue)
+                
+                if self.session.canAddOutput(self.videoDataOutput) {
+                    self.session.addOutput(self.videoDataOutput)
                 }
 
                 self.session.commitConfiguration()
@@ -150,6 +182,10 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func stopSession() {
+        if isRecording {
+            stopRecordingVideo()
+        }
+        
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
             if self.session.isRunning {
@@ -161,6 +197,7 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
         }
     }
 
+    // MARK: - Photo Capture
     func capturePhoto() async throws -> NSImage {
         guard isRunning else {
             throw NSError(domain: "CameraError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Camera session is not active"])
@@ -176,6 +213,59 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
                 let settings = AVCapturePhotoSettings()
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
+        }
+    }
+
+    // MARK: - Video Recording
+    func startRecordingVideo(completion: @escaping (Result<URL, Error>) -> Void) {
+        guard isRunning else {
+            completion(.failure(NSError(domain: "CameraError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Camera session is not active"])))
+            return
+        }
+        
+        guard !isRecording else {
+            completion(.failure(NSError(domain: "CameraError", code: -4, userInfo: [NSLocalizedDescriptionKey: "Recording is already in progress"])))
+            return
+        }
+
+        self.recordingCompletion = completion
+        
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac_webcam_rec_\(UUID().uuidString)")
+            .appendingPathExtension("mp4")
+            
+        try? FileManager.default.removeItem(at: tempURL)
+
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.movieOutput.startRecording(to: tempURL, recordingDelegate: self)
+            
+            DispatchQueue.main.async {
+                self.isRecording = true
+                self.recordingStartDate = Date()
+                self.recordingDuration = 0.0
+                
+                self.recordingTimer?.invalidate()
+                self.recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                    guard let self = self, let start = self.recordingStartDate else { return }
+                    self.recordingDuration = Date().timeIntervalSince(start)
+                }
+            }
+        }
+    }
+
+    func stopRecordingVideo() {
+        guard isRecording else { return }
+        
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.movieOutput.stopRecording()
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.recordingTimer?.invalidate()
+            self?.recordingTimer = nil
+            self?.isRecording = false
         }
     }
 
@@ -196,6 +286,28 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate {
 
         photoContinuation?.resume(returning: image)
         photoContinuation = nil
+    }
+
+    // MARK: - AVCaptureFileOutputRecordingDelegate
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isRecording = false
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = nil
+            
+            if let error = error {
+                self.recordingCompletion?(.failure(error))
+            } else {
+                self.recordingCompletion?(.success(outputFileURL))
+            }
+            self.recordingCompletion = nil
+        }
+    }
+
+    // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        onSampleBufferReceived?(sampleBuffer)
     }
 }
 

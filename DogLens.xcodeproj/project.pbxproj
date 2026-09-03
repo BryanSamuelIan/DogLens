@@ -501,6 +501,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera or webcam to scan dogs.\"";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "\"We need access to your microphone to record video of your dog.\"";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated videos and images to your Photos library.\"";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your Photos library to save scanned dogs.\"";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -540,6 +543,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "\"We need access to your camera or webcam to scan dogs.\"";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "\"We need access to your microphone to record video of your dog.\"";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "\"We need access to save annotated videos and images to your Photos library.\"";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "\"We need access to your Photos library to save scanned dogs.\"";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
