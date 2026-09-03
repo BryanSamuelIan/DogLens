@@ -31,7 +31,7 @@ struct MacScannerView: View {
     @State private var showOriginalPhoto = false
 
     // Video Scan State
-    @StateObject private var videoInferenceVMHolder = VideoInferenceHolder()
+    @State private var activeVideoVM: MacVideoInferenceViewModel? = nil
 
     // Feedback & Alerts
     @State private var savedAlertMessage: String?
@@ -154,8 +154,8 @@ struct MacScannerView: View {
     // MARK: - 2. Video Mode Content
     @ViewBuilder
     private var videoContentView: some View {
-        if let vm = videoInferenceVMHolder.vm, vm.annotatedVideoURL != nil {
-            MacVideoResultView(
+        if let vm = activeVideoVM {
+            MacVideoContainerView(
                 vm: vm,
                 allBreeds: allBreeds,
                 onSaveToGallery: {
@@ -173,15 +173,12 @@ struct MacScannerView: View {
             )
         } else {
             VStack {
-                let isInferring = videoInferenceVMHolder.vm?.isInferring ?? false
-                let progress = videoInferenceVMHolder.vm?.progress ?? 0.0
-
                 MacVideoZoneView(
                     inputSource: inputSource,
                     cameraManager: cameraManager,
                     isDropTargeted: isDropTargeted,
-                    isInferring: isInferring,
-                    inferenceProgress: progress,
+                    isInferring: false,
+                    inferenceProgress: 0.0,
                     onStartRecording: { startWebcamRecording() },
                     onStopRecording: { stopWebcamRecording() },
                     onUploadFile: { openFilePicker() },
@@ -208,7 +205,7 @@ struct MacScannerView: View {
     // MARK: - Camera Lifecycle Handlers
     private func setupCamera() {
         cameraManager.setup()
-        if scannerMode == .live || inputSource == .camera {
+        if (scannerMode == .live || inputSource == .camera) && activeVideoVM == nil && originalImage == nil {
             cameraManager.startSession()
         }
     }
@@ -216,7 +213,7 @@ struct MacScannerView: View {
     private func handleModeChange(to newMode: ScannerMode) {
         if newMode == .live {
             cameraManager.startSession()
-        } else if inputSource == .camera {
+        } else if inputSource == .camera && activeVideoVM == nil && originalImage == nil {
             cameraManager.startSession()
         } else {
             cameraManager.stopSession()
@@ -224,7 +221,7 @@ struct MacScannerView: View {
     }
 
     private func handleInputSourceChange(to newSource: MediaInputSource) {
-        if scannerMode == .live || newSource == .camera {
+        if (scannerMode == .live || newSource == .camera) && activeVideoVM == nil && originalImage == nil {
             cameraManager.startSession()
         } else {
             cameraManager.stopSession()
@@ -238,12 +235,16 @@ struct MacScannerView: View {
             annotatedImage = nil
             photoDetections = []
         }
+        if inputSource == .camera {
+            cameraManager.startSession()
+        }
     }
 
     private func captureAndDetectPhoto() async {
         isProcessingPhoto = true
         do {
             let photo = try await cameraManager.capturePhoto()
+            cameraManager.stopSession()
             await runPhotoDetection(on: photo)
         } catch {
             print("Capture failed: \(error)")
@@ -317,9 +318,9 @@ struct MacScannerView: View {
     // MARK: - Video Detection Logic
     private func resetVideoScanState() {
         withAnimation {
-            videoInferenceVMHolder.vm = nil
+            activeVideoVM = nil
         }
-        if inputSource == .camera {
+        if inputSource == .camera && scannerMode == .video {
             cameraManager.startSession()
         }
     }
@@ -342,8 +343,9 @@ struct MacScannerView: View {
     }
 
     private func processVideoURL(_ url: URL) {
+        cameraManager.stopSession()
         let vm = MacVideoInferenceViewModel(videoURL: url)
-        self.videoInferenceVMHolder.vm = vm
+        self.activeVideoVM = vm
         Task {
             await vm.runInference()
         }
@@ -459,9 +461,4 @@ struct MacScannerView: View {
 
         return false
     }
-}
-
-// MARK: - State Holder for Observable Object
-final class VideoInferenceHolder: ObservableObject {
-    @Published var vm: MacVideoInferenceViewModel?
 }

@@ -1,3 +1,8 @@
+//
+//  NSImage+CVPixelBuffer.swift
+//  DogLensMac
+//
+
 import AppKit
 import CoreGraphics
 import CoreImage
@@ -76,9 +81,42 @@ extension NSImage {
         return (buffer, info)
     }
 
+    /// Renders NSImage directly into a CVPixelBuffer of the given width and height without letterbox distortion
     func pixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
-        guard let result = letterboxPixelBuffer(targetSize: width) else { return nil }
-        return result.pixelBuffer
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!
+        ] as CFDictionary
+        var pixelBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                                  kCVPixelFormatType_32BGRA, attrs, &pixelBuffer) == kCVReturnSuccess,
+              let buffer = pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        guard let pixelData = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let context = CGContext(data: pixelData,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                                      space: colorSpace,
+                                      bitmapInfo: bitmapInfo) else { return nil }
+
+        let graphicsContext = NSGraphicsContext(cgContext: context, flipped: false)
+        let previousContext = NSGraphicsContext.current
+        NSGraphicsContext.current = graphicsContext
+        defer { NSGraphicsContext.current = previousContext }
+
+        self.draw(in: NSRect(x: 0, y: 0, width: width, height: height),
+                  from: NSRect(origin: .zero, size: self.size),
+                  operation: .copy,
+                  fraction: 1.0)
+
+        return buffer
     }
 
     /// Converts NSImage to JPEG Data
