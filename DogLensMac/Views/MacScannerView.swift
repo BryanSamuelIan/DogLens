@@ -371,6 +371,30 @@ struct MacScannerView: View {
     }
 
     // MARK: - File Picker & Drop Handlers
+    private func copySecurityScopedURLToTemp(url: URL) -> URL? {
+        let access = url.startAccessingSecurityScopedResource()
+        defer {
+            if access {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let ext = url.pathExtension.isEmpty ? "mp4" : url.pathExtension
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("doglens_input_\(UUID().uuidString)")
+            .appendingPathExtension(ext)
+
+        do {
+            if FileManager.default.fileExists(atPath: tempURL.path) {
+                try? FileManager.default.removeItem(at: tempURL)
+            }
+            try FileManager.default.copyItem(at: url, to: tempURL)
+            return tempURL
+        } catch {
+            print("Failed to copy security scoped file: \(error)")
+            return url
+        }
+    }
+
     private func openFilePicker() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
@@ -392,16 +416,17 @@ struct MacScannerView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
 
-            let access = url.startAccessingSecurityScopedResource()
-            defer {
-                if access {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
             if self.scannerMode == .video {
-                self.processVideoURL(url)
+                if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
+                    self.processVideoURL(safeURL)
+                }
             } else {
+                let access = url.startAccessingSecurityScopedResource()
+                defer {
+                    if access {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
                 guard let data = try? Data(contentsOf: url),
                       let image = NSImage(data: data) else { return }
                 Task { @MainActor in
@@ -417,20 +442,23 @@ struct MacScannerView: View {
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 guard let url = url else { return }
-                let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
-
                 let ext = url.pathExtension.lowercased()
                 let isVideoExt = ["mp4", "mov", "m4v", "avi", "mkv"].contains(ext)
 
                 DispatchQueue.main.async {
                     if isVideoExt {
                         self.scannerMode = .video
-                        self.processVideoURL(url)
-                    } else if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
-                        self.scannerMode = .photo
-                        Task { @MainActor in
-                            await self.runPhotoDetection(on: img)
+                        if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
+                            self.processVideoURL(safeURL)
+                        }
+                    } else {
+                        let access = url.startAccessingSecurityScopedResource()
+                        defer { if access { url.stopAccessingSecurityScopedResource() } }
+                        if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+                            self.scannerMode = .photo
+                            Task { @MainActor in
+                                await self.runPhotoDetection(on: img)
+                            }
                         }
                     }
                 }
@@ -441,7 +469,9 @@ struct MacScannerView: View {
                 guard let url = url else { return }
                 DispatchQueue.main.async {
                     self.scannerMode = .video
-                    self.processVideoURL(url)
+                    if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
+                        self.processVideoURL(safeURL)
+                    }
                 }
             }
             return true

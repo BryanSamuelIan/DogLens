@@ -74,16 +74,19 @@ final class MacVideoInferenceViewModel: ObservableObject {
         isInferring = false
     }
 
-    // MARK: - Private Pipeline: Frame Extraction → Inference → Tracking → Write
+    // MARK: - Streaming Pipeline: Memory-Efficient Single Pass Processing
     private func processVideo() async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         let duration = try await asset.load(.duration)
-        let totalSec = CMTimeGetSeconds(duration)
+        let rawDurationSec = CMTimeGetSeconds(duration)
 
-        guard totalSec > 0 else {
+        guard rawDurationSec > 0 else {
             throw NSError(domain: "VideoError", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Invalid video duration."])
         }
+
+        // Limit processing duration to 20 seconds max to maintain high responsiveness
+        let totalSec = min(rawDurationSec, 20.0)
 
         // 1. Build timestamp array at 15 FPS
         let interval = 1.0 / targetFPS
@@ -97,88 +100,23 @@ final class MacVideoInferenceViewModel: ObservableObject {
         let totalFrames = max(times.count, 1)
         let tolerance = CMTimeMakeWithSeconds(interval / 2.0, preferredTimescale: 600)
 
-        // 2. Extract frames using AVAssetImageGenerator
+        // 2. Setup AVAssetImageGenerator
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = tolerance
         generator.requestedTimeToleranceAfter = tolerance
         generator.maximumSize = CGSize(width: 1280, height: 1280)
 
-        var rawFrames: [(NSImage, CMTime)] = []
-        for (i, time) in times.enumerated() {
-            if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
-                let size = NSSize(width: cgImage.width, height: cgImage.height)
-                let nsImage = NSImage(cgImage: cgImage, size: size)
-                rawFrames.append((nsImage, time))
-            }
-            await MainActor.run { self.progress = Double(i + 1) / Double(totalFrames) * 0.4 }
-        }
-
-        guard !rawFrames.isEmpty else {
+        // Extract first frame to verify dimensions
+        guard let firstCG = try? generator.copyCGImage(at: times[0], actualTime: nil) else {
             throw NSError(domain: "VideoError", code: -2,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not extract any frames from video."])
+                          userInfo: [NSLocalizedDescriptionKey: "Could not read video frames."])
         }
 
-        // 3. Multi-Object Tracking & CoreML inference across extracted frames
-        let tracker = MacDogTracker(iouThreshold: 0.25, maxLostFrames: 15, baseDetectionThreshold: 0.30)
-        var annotatedFrames: [(NSImage, CMTime)] = []
-        var bestConf: Float = 0.0
+        let outputWidth = firstCG.width
+        let outputHeight = firstCG.height
 
-        for (i, (frame, time)) in rawFrames.enumerated() {
-            let rawResults = (try? await MacModelService.shared.detectDogs(in: frame)) ?? []
-            let trackedResults = tracker.processFrame(detections: rawResults, frameIndex: i)
-            let annotated = MacModelService.shared.renderAnnotatedImage(image: frame, detections: trackedResults)
-            annotatedFrames.append((annotated, time))
-
-            // Keep track of all raw detections
-            for raw in rawResults {
-                let existing = allVideoDetections[raw.label] ?? 0.0
-                allVideoDetections[raw.label] = max(existing, Double(raw.confidence))
-            }
-
-            // Track highest confidence frame for gallery thumbnail
-            if let top = rawResults.max(by: { $0.confidence < $1.confidence }), top.confidence > bestConf {
-                bestConf = top.confidence
-                bestAnnotatedFrame = annotated
-                bestOriginalFrame = frame
-                bestFrameResults = trackedResults
-            }
-
-            await MainActor.run { self.progress = 0.4 + (Double(i + 1) / Double(rawFrames.count) * 0.4) }
-        }
-
-        // 4. Consolidate tracks across time
-        let minFrames = rawFrames.count > 5 ? 2 : 1
-        let consolidatedSummaries = tracker.getConsolidatedSummaries(minFrames: minFrames, highConfidenceThreshold: 0.70)
-        
-        for summary in consolidatedSummaries {
-            let existing = allVideoDetections[summary.breedName] ?? 0.0
-            allVideoDetections[summary.breedName] = max(existing, summary.confidence)
-        }
-        self.trackedDogs = consolidatedSummaries
-
-        // Fallback for best frame if none had detections
-        if bestOriginalFrame == nil, let first = rawFrames.first?.0 {
-            bestOriginalFrame = first
-            bestAnnotatedFrame = annotatedFrames.first?.0 ?? first
-        }
-
-        // 5. Write annotated video to MP4
-        let outputURL = try await writeVideo(frames: annotatedFrames)
-        await MainActor.run { self.progress = 1.0 }
-        return outputURL
-    }
-
-    // MARK: - AVAssetWriter
-    private func writeVideo(frames: [(NSImage, CMTime)]) async throws -> URL {
-        guard let firstImg = frames.first?.0 else {
-            throw NSError(domain: "VideoError", code: -3,
-                          userInfo: [NSLocalizedDescriptionKey: "No frames to write."])
-        }
-
-        let w = Int(firstImg.size.width)
-        let h = Int(firstImg.size.height)
-
+        // 3. Setup AVAssetWriter for streaming output
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("mac_annotated_\(UUID().uuidString)")
             .appendingPathExtension("mp4")
@@ -186,13 +124,12 @@ final class MacVideoInferenceViewModel: ObservableObject {
         try? FileManager.default.removeItem(at: outputURL)
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: w,
-            AVVideoHeightKey: h,
+            AVVideoWidthKey: outputWidth,
+            AVVideoHeightKey: outputHeight,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: max(w * h * 2, 2_000_000),
+                AVVideoAverageBitRateKey: max(outputWidth * outputHeight * 2, 2_000_000),
             ],
         ]
 
@@ -201,8 +138,8 @@ final class MacVideoInferenceViewModel: ObservableObject {
 
         let adaptorAttrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: w,
-            kCVPixelBufferHeightKey as String: h,
+            kCVPixelBufferWidthKey as String: outputWidth,
+            kCVPixelBufferHeightKey as String: outputHeight,
         ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: writerInput,
@@ -213,20 +150,57 @@ final class MacVideoInferenceViewModel: ObservableObject {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let frameDuration = CMTimeMakeWithSeconds(1.0 / targetFPS, preferredTimescale: 600)
+        // 4. Stream: Extract -> Detect -> Track -> Render -> Write (Single-Pass with Autoreleasepool)
+        let tracker = MacDogTracker(iouThreshold: 0.25, maxLostFrames: 15, baseDetectionThreshold: 0.30)
+        let frameDuration = CMTimeMakeWithSeconds(interval, preferredTimescale: 600)
         var presentationTime = CMTime.zero
-        let total = frames.count
+        var bestConf: Float = 0.0
 
-        for (i, (image, _)) in frames.enumerated() {
+        for (i, time) in times.enumerated() {
+            var frameToProcess: NSImage?
+            autoreleasepool {
+                if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                    let size = NSSize(width: cgImage.width, height: cgImage.height)
+                    frameToProcess = NSImage(cgImage: cgImage, size: size)
+                }
+            }
+
+            guard let frame = frameToProcess else { continue }
+
+            let rawResults = (try? await MacModelService.shared.detectDogs(in: frame)) ?? []
+            let trackedResults = tracker.processFrame(detections: rawResults, frameIndex: i)
+            let annotated = MacModelService.shared.renderAnnotatedImage(image: frame, detections: trackedResults)
+
+            // Record raw detections
+            for raw in rawResults {
+                let existing = allVideoDetections[raw.label] ?? 0.0
+                allVideoDetections[raw.label] = max(existing, Double(raw.confidence))
+            }
+
+            // Save best thumbnail for Breed Gallery
+            if let top = rawResults.max(by: { $0.confidence < $1.confidence }), top.confidence > bestConf {
+                bestConf = top.confidence
+                bestAnnotatedFrame = annotated
+                bestOriginalFrame = frame
+                bestFrameResults = trackedResults
+            } else if bestOriginalFrame == nil {
+                bestOriginalFrame = frame
+                bestAnnotatedFrame = annotated
+            }
+
+            // Write frame to video
             while !writerInput.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 5_000_000) // 5ms
             }
 
-            if let pb = image.pixelBuffer(width: w, height: h) {
+            if let pb = annotated.pixelBuffer(width: outputWidth, height: outputHeight) {
                 adaptor.append(pb, withPresentationTime: presentationTime)
             }
             presentationTime = CMTimeAdd(presentationTime, frameDuration)
-            await MainActor.run { self.progress = 0.8 + (Double(i + 1) / Double(total) * 0.2) }
+
+            await MainActor.run {
+                self.progress = Double(i + 1) / Double(totalFrames)
+            }
         }
 
         writerInput.markAsFinished()
@@ -235,6 +209,15 @@ final class MacVideoInferenceViewModel: ObservableObject {
         if writer.status == .failed {
             throw writer.error ?? NSError(domain: "VideoError", code: -4, userInfo: [NSLocalizedDescriptionKey: "Failed to write video."])
         }
+
+        // 5. Consolidate tracks
+        let minFrames = totalFrames > 5 ? 2 : 1
+        let consolidatedSummaries = tracker.getConsolidatedSummaries(minFrames: minFrames, highConfidenceThreshold: 0.70)
+        for summary in consolidatedSummaries {
+            let existing = allVideoDetections[summary.breedName] ?? 0.0
+            allVideoDetections[summary.breedName] = max(existing, summary.confidence)
+        }
+        self.trackedDogs = consolidatedSummaries
 
         return outputURL
     }
