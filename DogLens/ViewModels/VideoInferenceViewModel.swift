@@ -348,7 +348,8 @@ final class VideoInferenceViewModel: ObservableObject {
                     videoData: rawVideoData,
                     annotatedVideoData: annotatedVideoData,
                     isVideo: true,
-                    confidence: highestConf
+                    confidence: highestConf,
+                    isSyncedToCloud: false
                 )
                 breed.images.append(entry)
                 savedCount += 1
@@ -357,7 +358,9 @@ final class VideoInferenceViewModel: ObservableObject {
                 let savedEntry = entry
                 let bName = breedName
                 Task {
-                    _ = try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedEntry, breedName: bName)
+                    if (try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedEntry, breedName: bName)) != nil {
+                        try? ctx.save()
+                    }
                 }
             }
         }

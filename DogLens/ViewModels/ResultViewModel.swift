@@ -118,7 +118,8 @@ final class ResultViewModel: ObservableObject {
                     imageData: originalData,
                     annotatedImageData: annotatedData,
                     isVideo: false,
-                    confidence: maxConf
+                    confidence: maxConf,
+                    isSyncedToCloud: false
                 )
                 breed.images.append(breedImage)
                 savedCount += 1
@@ -127,7 +128,9 @@ final class ResultViewModel: ObservableObject {
                 let savedImage = breedImage
                 let bName = breedName
                 Task {
-                    _ = try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedImage, breedName: bName)
+                    if (try? await CloudKitService.shared.uploadBreedMedia(breedImage: savedImage, breedName: bName)) != nil {
+                        try? ctx.save()
+                    }
                 }
             }
         }
