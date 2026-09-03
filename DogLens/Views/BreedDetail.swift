@@ -5,7 +5,15 @@ import AVKit
 struct BreedDetailView: View {
     @Bindable var breed: DogBreed
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
     @State private var selectedBreedImage: BreedImage?
+    @State private var isSelectionMode = false
+    @State private var selectedIDs = Set<UUID>()
+    
+    @State private var showBatchDeleteDialog = false
+    @State private var itemToDelete: BreedImage?
+    @State private var showSingleDeleteDialog = false
 
     let columns = [
         GridItem(.flexible(), spacing: 2),
@@ -14,66 +22,255 @@ struct BreedDetailView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            if breed.images.isEmpty {
-                ContentUnavailableView(
-                    "No Items",
-                    systemImage: "photo.on.rectangle",
-                    description: Text("No items for \(breed.name) have been saved yet.")
-                )
-                .padding(.top, 100)
-            } else {
-                LazyVGrid(columns: columns, spacing: 2) {
-                    ForEach(breed.images) { breedImage in
-                        BreedMediaGridItem(breedImage: breedImage)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                if breed.images.isEmpty {
+                    ContentUnavailableView(
+                        "No Items",
+                        systemImage: "photo.on.rectangle",
+                        description: Text("No photos or videos for \(breed.name) have been saved yet.")
+                    )
+                    .padding(.top, 100)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 2) {
+                        ForEach(breed.images) { breedImage in
+                            let isSelected = selectedIDs.contains(breedImage.id)
+                            
+                            ZStack(alignment: .topTrailing) {
+                                BreedMediaGridItem(breedImage: breedImage)
+                                    .overlay {
+                                        if isSelectionMode && isSelected {
+                                            Color.orange.opacity(0.18)
+                                                .overlay(
+                                                    Rectangle()
+                                                        .stroke(Color.orange, lineWidth: 3)
+                                                )
+                                        }
+                                    }
+
+                                if isSelectionMode {
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundColor(isSelected ? .orange : .white.opacity(0.9))
+                                        .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                                        .padding(6)
+                                        .transition(.scale.combined(with: .opacity))
+                                }
+                            }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedBreedImage = breedImage
+                                if isSelectionMode {
+                                    toggleSelection(breedImage.id)
+                                } else {
+                                    selectedBreedImage = breedImage
+                                }
                             }
-                            .contextMenu {
+                            .contextMenu(isSelectionMode ? nil : ContextMenu {
                                 Button(role: .destructive) {
-                                    deleteImage(breedImage)
+                                    itemToDelete = breedImage
+                                    showSingleDeleteDialog = true
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
+                            })
+                        }
+                    }
+                    .padding(.bottom, isSelectionMode ? 80 : 20)
+                }
+            }
+            
+            // Bottom Action Bar for Selection Mode (Apple HIG compliant)
+            if isSelectionMode && !breed.images.isEmpty {
+                VStack(spacing: 0) {
+                    Divider()
+                    HStack {
+                        Text(selectedIDs.isEmpty ? "Tap items to select" : "\(selectedIDs.count) selected")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Button(role: .destructive) {
+                            showBatchDeleteDialog = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash.fill")
+                                Text(selectedIDs.isEmpty ? "Delete" : "Delete (\(selectedIDs.count))")
+                                    .fontWeight(.semibold)
                             }
+                            .font(.subheadline)
+                            .foregroundColor(selectedIDs.isEmpty ? .secondary : .red)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                selectedIDs.isEmpty
+                                ? Color.secondary.opacity(0.1)
+                                : Color.red.opacity(0.12),
+                                in: Capsule()
+                            )
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !breed.images.isEmpty {
+                if isSelectionMode {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(selectedIDs.count == breed.images.count ? "Deselect All" : "Select All") {
+                            if selectedIDs.count == breed.images.count {
+                                selectedIDs.removeAll()
+                            } else {
+                                selectedIDs = Set(breed.images.map { $0.id })
+                            }
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSelectionMode = false
+                                selectedIDs.removeAll()
+                            }
+                        }
+                        .fontWeight(.semibold)
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Select") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSelectionMode = true
+                            }
+                        }
                     }
                 }
             }
         }
-        .navigationTitle(breed.name)
-        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $selectedBreedImage) { _ in
             BreedMediaGalleryPager(breed: breed, selectedItem: $selectedBreedImage)
         }
+        .confirmationDialog(
+            "Delete \(selectedIDs.count) Item\(selectedIDs.count == 1 ? "" : "s")?",
+            isPresented: $showBatchDeleteDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleteSelectedImages()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will delete the selected \(selectedIDs.count == 1 ? "item" : "\(selectedIDs.count) items") from this device and iCloud.")
+        }
+        .confirmationDialog(
+            "Delete \(itemToDelete?.isVideo == true ? "Video" : "Photo")?",
+            isPresented: $showSingleDeleteDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let item = itemToDelete {
+                    deleteSingleImage(item)
+                    itemToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: {
+            Text("This will delete this \(itemToDelete?.isVideo == true ? "video" : "photo") from this device and iCloud.")
+        }
+        .onChange(of: breed.images.isEmpty) { _, isEmpty in
+            if isEmpty && isSelectionMode {
+                isSelectionMode = false
+                selectedIDs.removeAll()
+            }
+        }
     }
 
-    private func deleteImage(_ breedImage: BreedImage) {
+    private var navigationTitle: String {
+        if isSelectionMode {
+            return selectedIDs.isEmpty ? "Select Items" : "\(selectedIDs.count) Selected"
+        } else {
+            return breed.name
+        }
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        withAnimation(.snappy(duration: 0.2)) {
+            if selectedIDs.contains(id) {
+                selectedIDs.remove(id)
+            } else {
+                selectedIDs.insert(id)
+            }
+        }
+    }
+
+    private func deleteSingleImage(_ breedImage: BreedImage) {
         let idString = breedImage.id.uuidString
         if let index = breed.images.firstIndex(where: { $0.id == breedImage.id }) {
-            breed.images.remove(at: index)
-            modelContext.delete(breedImage)
+            withAnimation {
+                breed.images.remove(at: index)
+                modelContext.delete(breedImage)
+            }
             do {
                 try modelContext.save()
             } catch {
-                print("Failed to delete image")
+                print("Failed to delete image: \(error)")
             }
             Task {
                 try? await CloudKitService.shared.deleteCloudMedia(recordName: idString)
             }
         }
     }
+
+    private func deleteSelectedImages() {
+        let idsToDelete = selectedIDs
+        let itemsToDelete = breed.images.filter { idsToDelete.contains($0.id) }
+        let recordNames = itemsToDelete.map { $0.id.uuidString }
+
+        withAnimation {
+            for item in itemsToDelete {
+                if let idx = breed.images.firstIndex(where: { $0.id == item.id }) {
+                    breed.images.remove(at: idx)
+                }
+                modelContext.delete(item)
+            }
+            selectedIDs.removeAll()
+            isSelectionMode = false
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to batch save after delete: \(error)")
+        }
+
+        Task {
+            try? await CloudKitService.shared.deleteCloudMedia(recordNames: recordNames)
+        }
+    }
 }
 
-// MARK: - Breed Media Gallery Pager (Swipe Left/Right Between Media)
+// MARK: - Breed Media Gallery Pager (Swipe Left/Right Between Media & Full-Screen Delete)
 
 struct BreedMediaGalleryPager: View {
     @Bindable var breed: DogBreed
     @Binding var selectedItem: BreedImage?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedID: UUID
     @State private var showOriginal = false
+    @State private var showDeleteConfirmation = false
 
     init(breed: DogBreed, selectedItem: Binding<BreedImage?>) {
         self._breed = Bindable(breed)
@@ -95,26 +292,28 @@ struct BreedMediaGalleryPager: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                TabView(selection: $selectedID) {
-                    ForEach(breed.images) { item in
-                        Group {
-                            if item.isVideo {
-                                ZoomableVideoView(
-                                    breedImage: item,
-                                    showOriginal: showOriginal,
-                                    isCurrentPage: selectedID == item.id
-                                )
-                            } else {
-                                ZoomableImageView(
-                                    breedImage: item,
-                                    showOriginal: showOriginal
-                                )
+                if !breed.images.isEmpty {
+                    TabView(selection: $selectedID) {
+                        ForEach(breed.images) { item in
+                            Group {
+                                if item.isVideo {
+                                    ZoomableVideoView(
+                                        breedImage: item,
+                                        showOriginal: showOriginal,
+                                        isCurrentPage: selectedID == item.id
+                                    )
+                                } else {
+                                    ZoomableImageView(
+                                        breedImage: item,
+                                        showOriginal: showOriginal
+                                    )
+                                }
                             }
+                            .tag(item.id)
                         }
-                        .tag(item.id)
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -146,7 +345,7 @@ struct BreedMediaGalleryPager: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     if let current = currentItem,
                        (current.annotatedImageData != nil || current.annotatedVideoData != nil) {
                         Picker("View Mode", selection: $showOriginal) {
@@ -156,8 +355,68 @@ struct BreedMediaGalleryPager: View {
                         .pickerStyle(.segmented)
                         .frame(width: 140)
                     }
+                    
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.body)
+                            .foregroundColor(.red)
+                    }
+                    .disabled(currentItem == nil)
                 }
             }
+            .confirmationDialog(
+                "Delete \(currentItem?.isVideo == true ? "Video" : "Photo")?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    deleteCurrentItem()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete this \(currentItem?.isVideo == true ? "video" : "photo") from this device and iCloud.")
+            }
+        }
+    }
+
+    private func deleteCurrentItem() {
+        guard let item = currentItem else { return }
+        let idString = item.id.uuidString
+        let currentIdx = currentIndex
+        
+        // Determine next item to display before removal
+        let nextID: UUID?
+        if breed.images.count > 1 {
+            if currentIdx + 1 < breed.images.count {
+                nextID = breed.images[currentIdx + 1].id
+            } else if currentIdx - 1 >= 0 {
+                nextID = breed.images[currentIdx - 1].id
+            } else {
+                nextID = nil
+            }
+        } else {
+            nextID = nil
+        }
+
+        withAnimation {
+            if let idx = breed.images.firstIndex(where: { $0.id == item.id }) {
+                breed.images.remove(at: idx)
+            }
+            modelContext.delete(item)
+            try? modelContext.save()
+            
+            if let next = nextID {
+                selectedID = next
+            } else {
+                selectedItem = nil
+                dismiss()
+            }
+        }
+
+        Task {
+            try? await CloudKitService.shared.deleteCloudMedia(recordName: idString)
         }
     }
 }

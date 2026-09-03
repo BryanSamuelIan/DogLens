@@ -172,10 +172,37 @@ final class CloudKitService: ObservableObject {
     
     // MARK: - Delete Cloud Media
     
+    /// Deletes a batch of records from CloudKit private database
+    func deleteCloudMedia(recordNames: [String]) async throws {
+        guard !recordNames.isEmpty else { return }
+        let recordIDs = recordNames.map { CKRecord.ID(recordName: $0) }
+        
+        do {
+            let (_, deleteResults) = try await database.modifyRecords(saving: [], deleting: recordIDs)
+            var deletedCount = 0
+            for (_, result) in deleteResults {
+                if case .success = result {
+                    deletedCount += 1
+                }
+            }
+            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
+            print("[iOS CloudKit] Successfully deleted \(deletedCount)/\(recordNames.count) records from CloudKit.")
+        } catch {
+            print("[iOS CloudKit] Batch deletion error: \(error)")
+            // Fallback to individual deletion if batch modification encounters partial/policy failure
+            var deletedCount = 0
+            for id in recordIDs {
+                if (try? await database.deleteRecord(withID: id)) != nil {
+                    deletedCount += 1
+                }
+            }
+            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
+        }
+    }
+    
+    /// Deletes a single record from CloudKit private database
     func deleteCloudMedia(recordName: String) async throws {
-        let recordID = CKRecord.ID(recordName: recordName)
-        _ = try await database.deleteRecord(withID: recordID)
-        self.backedUpItemCount = max(0, self.backedUpItemCount - 1)
+        try await deleteCloudMedia(recordNames: [recordName])
     }
     
     // MARK: - Item Count Query

@@ -298,15 +298,33 @@ final class MacCloudKitService {
     }
 
     // MARK: - Delete Cloud Media
-    func deleteCloudMedia(recordName: String) async {
+    func deleteCloudMedia(recordNames: [String]) async {
+        guard !recordNames.isEmpty else { return }
+        let recordIDs = recordNames.map { CKRecord.ID(recordName: $0) }
         do {
-            let recordID = CKRecord.ID(recordName: recordName)
-            _ = try await privateDB.deleteRecord(withID: recordID)
-            self.backedUpItemCount = max(0, self.backedUpItemCount - 1)
-            print("Successfully deleted record \(recordName) from CloudKit on Mac")
+            let (_, deleteResults) = try await privateDB.modifyRecords(saving: [], deleting: recordIDs)
+            var deletedCount = 0
+            for (_, result) in deleteResults {
+                if case .success = result {
+                    deletedCount += 1
+                }
+            }
+            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
+            print("Successfully batch deleted \(deletedCount)/\(recordNames.count) records from CloudKit on Mac")
         } catch {
-            print("Failed to delete record \(recordName) from CloudKit on Mac: \(error)")
+            print("Mac CloudKit batch deletion error: \(error), falling back to individual deletes")
+            var deletedCount = 0
+            for id in recordIDs {
+                if (try? await privateDB.deleteRecord(withID: id)) != nil {
+                    deletedCount += 1
+                }
+            }
+            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
         }
+    }
+
+    func deleteCloudMedia(recordName: String) async {
+        await deleteCloudMedia(recordNames: [recordName])
     }
 
     private func createTempFile(data: Data, ext: String) -> URL? {

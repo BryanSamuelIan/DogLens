@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import AppKit
 import UniformTypeIdentifiers
+import AVKit
 
 struct MacBreedGalleryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -110,7 +111,7 @@ struct MacBreedGalleryView: View {
         }
         .sheet(item: $selectedBreed) { breed in
             MacBreedDetailSheet(breed: breed)
-                .frame(minWidth: 650, minHeight: 500)
+                .frame(minWidth: 700, minHeight: 520)
         }
         .task {
             await cloudService.syncFromCloud(modelContext: modelContext)
@@ -306,12 +307,20 @@ struct MacBreedCard: View {
     }
 }
 
-// MARK: - Mac Breed Detail Sheet
+// MARK: - Mac Breed Detail Sheet (with HIG Batch Selection & Single Delete)
+
 struct MacBreedDetailSheet: View {
     @Bindable var breed: DogBreed
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+
     @State private var previewImage: BreedImage?
+    @State private var isSelectionMode = false
+    @State private var selectedIDs = Set<UUID>()
+
+    @State private var showBatchDeleteAlert = false
+    @State private var showSingleDeleteAlert = false
+    @State private var itemToDelete: BreedImage?
 
     private let columns = [
         GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 12)
@@ -322,7 +331,7 @@ struct MacBreedDetailSheet: View {
             VStack(spacing: 0) {
                 if breed.images.isEmpty {
                     ContentUnavailableView(
-                        "No Saved Photos",
+                        "No Saved Items",
                         systemImage: "photo.on.rectangle",
                         description: Text("Scan a \(breed.name) using the scanner to collect it.")
                     )
@@ -331,51 +340,189 @@ struct MacBreedDetailSheet: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(breed.images) { item in
-                                ZStack {
-                                    Color(NSColor.controlBackgroundColor)
-                                    if let nsImg = NSImage(data: item.imageData) {
-                                        Image(nsImage: nsImg)
-                                            .resizable()
-                                            .scaledToFill()
+                                let isSelected = selectedIDs.contains(item.id)
+
+                                ZStack(alignment: .topTrailing) {
+                                    ZStack(alignment: .bottomTrailing) {
+                                        Color(NSColor.controlBackgroundColor)
+                                        if let nsImg = NSImage(data: item.imageData) {
+                                            Image(nsImage: nsImg)
+                                                .resizable()
+                                                .scaledToFill()
+                                        }
+
+                                        if item.isVideo {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "video.fill")
+                                                    .font(.system(size: 8, weight: .bold))
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 3)
+                                            .background(.black.opacity(0.65), in: Capsule())
+                                            .padding(6)
+                                        }
+                                    }
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(
+                                                isSelectionMode && isSelected
+                                                ? Color.orange
+                                                : Color.primary.opacity(0.08),
+                                                lineWidth: isSelectionMode && isSelected ? 3 : 1
+                                            )
+                                    )
+
+                                    if isSelectionMode {
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(isSelected ? .orange : .white.opacity(0.9))
+                                            .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+                                            .padding(6)
                                     }
                                 }
-                                .aspectRatio(1, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    previewImage = item
+                                    if isSelectionMode {
+                                        toggleSelection(item.id)
+                                    } else {
+                                        previewImage = item
+                                    }
                                 }
-                                .contextMenu {
+                                .contextMenu(isSelectionMode ? nil : ContextMenu {
                                     Button(role: .destructive) {
-                                        deleteImage(item)
+                                        itemToDelete = item
+                                        showSingleDeleteAlert = true
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
-                                }
+                                })
                             }
                         }
                         .padding(20)
                     }
                 }
             }
-            .navigationTitle(breed.name)
+            .navigationTitle(sheetTitle)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
+                if isSelectionMode {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            withAnimation {
+                                isSelectionMode = false
+                                selectedIDs.removeAll()
+                            }
+                        }
                     }
-                    .foregroundColor(.orange)
-                    .fontWeight(.semibold)
+
+                    ToolbarItem(placement: .automatic) {
+                        Button(selectedIDs.count == breed.images.count ? "Deselect All" : "Select All") {
+                            if selectedIDs.count == breed.images.count {
+                                selectedIDs.removeAll()
+                            } else {
+                                selectedIDs = Set(breed.images.map { $0.id })
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .automatic) {
+                        Button(role: .destructive) {
+                            showBatchDeleteAlert = true
+                        } label: {
+                            Label(
+                                selectedIDs.isEmpty ? "Delete" : "Delete (\(selectedIDs.count))",
+                                systemImage: "trash"
+                            )
+                            .foregroundColor(selectedIDs.isEmpty ? .secondary : .red)
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    }
+
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            withAnimation {
+                                isSelectionMode = false
+                                selectedIDs.removeAll()
+                            }
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(.orange)
+                    }
+                } else {
+                    if !breed.images.isEmpty {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                withAnimation {
+                                    isSelectionMode = true
+                                }
+                            } label: {
+                                Label("Select", systemImage: "checkmark.circle")
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .foregroundColor(.orange)
+                        .fontWeight(.semibold)
+                    }
                 }
             }
             .sheet(item: $previewImage) { item in
-                MacFullScreenMediaView(breedImage: item)
+                MacFullScreenMediaView(breed: breed, breedImage: item)
                     .frame(minWidth: 700, minHeight: 600)
+            }
+            .alert("Delete \(selectedIDs.count) Item\(selectedIDs.count == 1 ? "" : "s")?", isPresented: $showBatchDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    deleteSelectedItems()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete the selected \(selectedIDs.count == 1 ? "item" : "\(selectedIDs.count) items") from this device and iCloud.")
+            }
+            .alert("Delete \(itemToDelete?.isVideo == true ? "Video" : "Photo")?", isPresented: $showSingleDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete {
+                        deleteSingleImage(item)
+                        itemToDelete = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    itemToDelete = nil
+                }
+            } message: {
+                Text("This will delete this \(itemToDelete?.isVideo == true ? "video" : "photo") from this device and iCloud.")
+            }
+            .onChange(of: breed.images.isEmpty) { _, isEmpty in
+                if isEmpty && isSelectionMode {
+                    isSelectionMode = false
+                    selectedIDs.removeAll()
+                }
             }
         }
     }
 
-    private func deleteImage(_ item: BreedImage) {
+    private var sheetTitle: String {
+        if isSelectionMode {
+            return selectedIDs.isEmpty ? "Select Items" : "\(selectedIDs.count) Selected"
+        } else {
+            return breed.name
+        }
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func deleteSingleImage(_ item: BreedImage) {
         let idString = item.id.uuidString
         if let idx = breed.images.firstIndex(where: { $0.id == item.id }) {
             breed.images.remove(at: idx)
@@ -387,13 +534,42 @@ struct MacBreedDetailSheet: View {
             }
         }
     }
+
+    private func deleteSelectedItems() {
+        let idsToDelete = selectedIDs
+        let itemsToDelete = breed.images.filter { idsToDelete.contains($0.id) }
+        let recordNames = itemsToDelete.map { $0.id.uuidString }
+
+        for item in itemsToDelete {
+            if let idx = breed.images.firstIndex(where: { $0.id == item.id }) {
+                breed.images.remove(at: idx)
+            }
+            modelContext.delete(item)
+        }
+
+        selectedIDs.removeAll()
+        isSelectionMode = false
+
+        try? modelContext.save()
+
+        Task {
+            await MacCloudKitService.shared.deleteCloudMedia(recordNames: recordNames)
+        }
+    }
 }
 
-// MARK: - Mac Full Screen Media Preview View
+// MARK: - Mac Full Screen Media Preview View (Photo + Video Support & Single Deletion)
+
 struct MacFullScreenMediaView: View {
+    @Bindable var breed: DogBreed
     let breedImage: BreedImage
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
     @State private var showOriginal = false
+    @State private var showDeleteAlert = false
+    @State private var player: AVPlayer?
+    @State private var tempVideoURL: URL?
 
     private var displayImage: NSImage? {
         if showOriginal {
@@ -406,7 +582,7 @@ struct MacFullScreenMediaView: View {
     var body: some View {
         NavigationStack {
             VStack {
-                if breedImage.annotatedImageData != nil {
+                if (breedImage.annotatedImageData != nil || breedImage.annotatedVideoData != nil) {
                     Picker("Mode", selection: $showOriginal) {
                         Text("Detection").tag(false)
                         Text("Original").tag(true)
@@ -417,27 +593,64 @@ struct MacFullScreenMediaView: View {
                     .tint(.orange)
                 }
 
-                if let img = displayImage {
-                    Image(nsImage: img)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(20)
+                if breedImage.isVideo {
+                    if let player = player {
+                        VideoPlayer(player: player)
+                            .frame(minHeight: 400)
+                            .padding(20)
+                    } else {
+                        ProgressView("Loading Video…")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
-                    Text("Error loading image")
+                    if let img = displayImage {
+                        Image(nsImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(20)
+                    } else {
+                        Text("Error loading image")
+                    }
                 }
 
                 Spacer()
             }
+            .onAppear {
+                if breedImage.isVideo {
+                    setupVideoPlayer()
+                }
+            }
+            .onDisappear {
+                player?.pause()
+                cleanupTempVideo()
+            }
+            .onChange(of: showOriginal) { _, original in
+                if breedImage.isVideo {
+                    setupVideoPlayer()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button {
-                        let breedName = breedImage.breed?.name.replacingOccurrences(of: " ", with: "_") ?? "Dog"
-                        let filename = "DogLens_\(breedName)_\(showOriginal ? "Original" : "Detection").jpg"
-                        if let img = displayImage {
+                        let breedName = breed.name.replacingOccurrences(of: " ", with: "_")
+                        if breedImage.isVideo {
+                            let filename = "DogLens_\(breedName)_\(showOriginal ? "Original" : "Detection").mp4"
+                            saveVideoToFile(defaultName: filename)
+                        } else if let img = displayImage {
+                            let filename = "DogLens_\(breedName)_\(showOriginal ? "Original" : "Detection").jpg"
                             saveImageToFile(image: img, defaultName: filename)
                         }
                     } label: {
                         Label("Save to File…", systemImage: "arrow.down.doc")
+                    }
+                }
+
+                ToolbarItem(placement: .automatic) {
+                    Button(role: .destructive) {
+                        showDeleteAlert = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                            .foregroundColor(.red)
                     }
                 }
 
@@ -447,6 +660,50 @@ struct MacFullScreenMediaView: View {
                     }
                     .foregroundColor(.orange)
                 }
+            }
+            .alert("Delete \(breedImage.isVideo ? "Video" : "Photo")?", isPresented: $showDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    deleteCurrentMedia()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete this \(breedImage.isVideo ? "video" : "photo") from this device and iCloud.")
+            }
+        }
+    }
+
+    private func setupVideoPlayer() {
+        cleanupTempVideo()
+        let tempDir = FileManager.default.temporaryDirectory
+        let data = showOriginal ? (breedImage.videoData ?? breedImage.annotatedVideoData) : (breedImage.annotatedVideoData ?? breedImage.videoData)
+        guard let videoData = data else { return }
+
+        let fileURL = tempDir.appendingPathComponent("mac_preview_\(breedImage.id.uuidString).mp4")
+        try? videoData.write(to: fileURL)
+        tempVideoURL = fileURL
+
+        let p = AVPlayer(url: fileURL)
+        player = p
+        p.play()
+    }
+
+    private func cleanupTempVideo() {
+        if let url = tempVideoURL {
+            try? FileManager.default.removeItem(at: url)
+            tempVideoURL = nil
+        }
+    }
+
+    private func deleteCurrentMedia() {
+        let idString = breedImage.id.uuidString
+        if let idx = breed.images.firstIndex(where: { $0.id == breedImage.id }) {
+            breed.images.remove(at: idx)
+            modelContext.delete(breedImage)
+            try? modelContext.save()
+            dismiss()
+
+            Task {
+                await MacCloudKitService.shared.deleteCloudMedia(recordName: idString)
             }
         }
     }
@@ -468,6 +725,29 @@ struct MacFullScreenMediaView: View {
             defer { if access { url.stopAccessingSecurityScopedResource() } }
 
             if let data = image.jpegData {
+                try? data.write(to: url)
+            }
+        }
+    }
+
+    private func saveVideoToFile(defaultName: String) {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsTagField = false
+        savePanel.nameFieldStringValue = defaultName
+        savePanel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
+
+        if let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            savePanel.directoryURL = downloadsURL
+        }
+
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+
+            let data = showOriginal ? (breedImage.videoData ?? breedImage.annotatedVideoData) : (breedImage.annotatedVideoData ?? breedImage.videoData)
+            if let data = data {
                 try? data.write(to: url)
             }
         }
