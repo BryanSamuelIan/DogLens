@@ -22,6 +22,7 @@ final class BreedImage {
     var detectionDate: Date
     var confidence: Double
     var breed: DogBreed?
+    var isSyncedToCloud: Bool = true
     
     init(id: UUID = UUID(),
          imageData: Data,
@@ -31,7 +32,8 @@ final class BreedImage {
          isVideo: Bool = false,
          detectionDate: Date = Date(),
          confidence: Double,
-         breed: DogBreed? = nil) {
+         breed: DogBreed? = nil,
+         isSyncedToCloud: Bool = true) {
         self.id = id
         self.imageData = imageData
         self.annotatedImageData = annotatedImageData
@@ -41,5 +43,6 @@ final class BreedImage {
         self.detectionDate = detectionDate
         self.confidence = confidence
         self.breed = breed
+        self.isSyncedToCloud = isSyncedToCloud
     }
 }

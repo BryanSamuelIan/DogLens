@@ -45,7 +45,8 @@ enum MacGallerySaver {
                 isVideo: false,
                 detectionDate: Date(),
                 confidence: Double(item.confidence),
-                breed: breed
+                breed: breed,
+                isSyncedToCloud: false
             )
 
             modelContext.insert(breedImage)
@@ -55,6 +56,7 @@ enum MacGallerySaver {
             // Automatic 2-way background iCloud sync
             Task {
                 await MacCloudKitService.shared.uploadBreedImage(breedImage, breedName: breed.name)
+                try? modelContext.save()
             }
         }
 

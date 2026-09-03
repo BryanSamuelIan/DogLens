@@ -49,10 +49,40 @@ final class CloudKitService: ObservableObject {
     @Published var backedUpItemCount: Int = 0
     @Published var lastSyncDate: Date? = nil
     
+    // Persistent Pending Deletions Key
+    private let pendingDeletionsKey = "com.doglens.pendingCloudDeletions"
+    
     private init() {
         Task {
             await refreshCloudItemCount()
         }
+    }
+    
+    // MARK: - Pending Deletions Queue Helpers
+    
+    private func getPendingDeletions() -> Set<String> {
+        let array = UserDefaults.standard.stringArray(forKey: pendingDeletionsKey) ?? []
+        return Set(array)
+    }
+    
+    private func addPendingDeletions(_ names: [String]) {
+        var current = getPendingDeletions()
+        current.formUnion(names)
+        UserDefaults.standard.set(Array(current), forKey: pendingDeletionsKey)
+    }
+    
+    private func removePendingDeletions(_ names: [String]) {
+        var current = getPendingDeletions()
+        current.subtract(names)
+        UserDefaults.standard.set(Array(current), forKey: pendingDeletionsKey)
+    }
+    
+    /// Flushes any previously queued deletions that may have failed while offline
+    func flushPendingDeletions() async {
+        let pending = Array(getPendingDeletions())
+        guard !pending.isEmpty else { return }
+        print("[iOS CloudKit] Flushing \(pending.count) pending deletions from queue...")
+        try? await performCloudDeletion(recordNames: pending)
     }
     
     // MARK: - Upload Breed Media
@@ -104,6 +134,7 @@ final class CloudKitService: ObservableObject {
         
         do {
             let savedRecord = try await database.save(record)
+            breedImage.isSyncedToCloud = true
             self.syncState = .synced(Date())
             self.lastSyncDate = Date()
             self.backedUpItemCount += 1
@@ -172,31 +203,56 @@ final class CloudKitService: ObservableObject {
     
     // MARK: - Delete Cloud Media
     
-    /// Deletes a batch of records from CloudKit private database
+    /// Public entry point for deleting records from CloudKit
     func deleteCloudMedia(recordNames: [String]) async throws {
+        guard !recordNames.isEmpty else { return }
+        addPendingDeletions(recordNames)
+        try await performCloudDeletion(recordNames: recordNames)
+    }
+    
+    /// Performs deletion on CloudKit database with fallback and .unknownItem tolerance
+    private func performCloudDeletion(recordNames: [String]) async throws {
         guard !recordNames.isEmpty else { return }
         let recordIDs = recordNames.map { CKRecord.ID(recordName: $0) }
         
+        var successfulDeletions: [String] = []
+        
         do {
             let (_, deleteResults) = try await database.modifyRecords(saving: [], deleting: recordIDs)
-            var deletedCount = 0
-            for (_, result) in deleteResults {
-                if case .success = result {
-                    deletedCount += 1
+            for (recID, result) in deleteResults {
+                switch result {
+                case .success:
+                    successfulDeletions.append(recID.recordName)
+                case .failure(let error):
+                    if let ckError = error as? CKError, ckError.code == .unknownItem {
+                        // Already gone from CloudKit, treat as deleted
+                        successfulDeletions.append(recID.recordName)
+                    } else {
+                        print("[iOS CloudKit] Failed to delete record \(recID.recordName): \(error)")
+                    }
                 }
             }
-            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
-            print("[iOS CloudKit] Successfully deleted \(deletedCount)/\(recordNames.count) records from CloudKit.")
         } catch {
-            print("[iOS CloudKit] Batch deletion error: \(error)")
-            // Fallback to individual deletion if batch modification encounters partial/policy failure
-            var deletedCount = 0
+            print("[iOS CloudKit] Batch deletion error: \(error), falling back to individual deletes...")
             for id in recordIDs {
-                if (try? await database.deleteRecord(withID: id)) != nil {
-                    deletedCount += 1
+                do {
+                    _ = try await database.deleteRecord(withID: id)
+                    successfulDeletions.append(id.recordName)
+                } catch {
+                    if let ckError = error as? CKError, ckError.code == .unknownItem {
+                        // Already gone from CloudKit
+                        successfulDeletions.append(id.recordName)
+                    } else {
+                        print("[iOS CloudKit] Individual delete failed for \(id.recordName): \(error)")
+                    }
                 }
             }
-            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
+        }
+        
+        if !successfulDeletions.isEmpty {
+            removePendingDeletions(successfulDeletions)
+            self.backedUpItemCount = max(0, self.backedUpItemCount - successfulDeletions.count)
+            print("[iOS CloudKit] Successfully deleted \(successfulDeletions.count)/\(recordNames.count) records from CloudKit.")
         }
     }
     
@@ -217,12 +273,28 @@ final class CloudKitService: ObservableObject {
         }
     }
     
-    // MARK: - Sync with Local SwiftData (Resilient & Non-Dropping)
+    // MARK: - Sync with Local SwiftData (Two-Way Deletion & Upload Reconciliation)
     
     func syncWithLocalDatabase(modelContext: ModelContext) async {
-        guard let records = try? await fetchCloudMedia() else { return }
+        // 1. Flush any pending offline deletions first
+        await flushPendingDeletions()
         
-        // Fetch existing images to prevent duplication
+        // 2. Fetch current records from CloudKit
+        guard let records = try? await fetchCloudMedia() else {
+            print("[iOS CloudKit] Aborting local sync: could not fetch records from CloudKit.")
+            return
+        }
+        
+        // Index CloudKit records by lowercase UUID
+        var cloudRecordIDs = Set<String>()
+        for record in records {
+            let idString = (record["mediaId"] as? String)
+                ?? (record["localID"] as? String)
+                ?? record.recordID.recordName
+            cloudRecordIDs.insert(idString.lowercased())
+        }
+        
+        // Fetch all existing local images
         let existingDescriptor = FetchDescriptor<BreedImage>()
         let existingImages = (try? modelContext.fetch(existingDescriptor)) ?? []
         let existingIDs = Set(existingImages.map { $0.id.uuidString.lowercased() })
@@ -231,13 +303,15 @@ final class CloudKitService: ObservableObject {
         let allBreeds = (try? modelContext.fetch(breedDescriptor)) ?? []
         var breedDict: [String: DogBreed] = [:]
         for b in allBreeds {
-            breedDict[b.name.lowercased()] = b
+            breedDict[b.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] = b
         }
         
         var downloadedCount = 0
+        var deletedLocalCount = 0
+        var uploadedLocalCount = 0
         
+        // 3. Download records from CloudKit that don't exist locally
         for record in records {
-            // Support mediaId, localID, or recordName
             let idString = (record["mediaId"] as? String)
                 ?? (record["localID"] as? String)
                 ?? record.recordID.recordName
@@ -251,7 +325,8 @@ final class CloudKitService: ObservableObject {
                 continue
             }
             
-            let breedName = (record["breedName"] as? String) ?? "Unknown Breed"
+            let rawBreedName = (record["breedName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let breedName = (rawBreedName?.isEmpty == false) ? rawBreedName! : "Unknown Breed"
             
             let confidence = (record["confidence"] as? Double)
                 ?? ((record["confidence"] as? NSNumber)?.doubleValue)
@@ -284,7 +359,6 @@ final class CloudKitService: ObservableObject {
                 continue
             }
             
-            // Load optional assets
             var annotatedImageData: Data? = nil
             if let annotAsset = record["annotatedImageAsset"] as? CKAsset,
                let url = annotAsset.fileURL {
@@ -305,12 +379,13 @@ final class CloudKitService: ObservableObject {
             
             // Find or create local breed
             let breed: DogBreed
-            if let existing = breedDict[breedName.lowercased()] {
+            let key = breedName.lowercased()
+            if let existing = breedDict[key] {
                 breed = existing
             } else {
                 let newBreed = DogBreed(name: breedName)
                 modelContext.insert(newBreed)
-                breedDict[breedName.lowercased()] = newBreed
+                breedDict[key] = newBreed
                 breed = newBreed
             }
             
@@ -323,16 +398,47 @@ final class CloudKitService: ObservableObject {
                 isVideo: isVideo,
                 detectionDate: detectionDate,
                 confidence: confidence,
-                breed: breed
+                breed: breed,
+                isSyncedToCloud: true
             )
             modelContext.insert(newEntry)
             breed.images.append(newEntry)
             downloadedCount += 1
         }
         
+        // 4. Reconcile local images:
+        //    - If isSyncedToCloud is true but missing from CloudKit -> It was deleted in CloudKit (delete locally).
+        //    - If isSyncedToCloud is false and missing from CloudKit -> It was created locally offline (upload to CloudKit).
+        for localImage in existingImages {
+            let localKey = localImage.id.uuidString.lowercased()
+            if cloudRecordIDs.contains(localKey) {
+                localImage.isSyncedToCloud = true
+            } else {
+                if localImage.isSyncedToCloud {
+                    // Record was previously in CloudKit, now deleted -> Purge locally
+                    if let breed = localImage.breed,
+                       let idx = breed.images.firstIndex(where: { $0.id == localImage.id }) {
+                        breed.images.remove(at: idx)
+                    }
+                    modelContext.delete(localImage)
+                    deletedLocalCount += 1
+                } else {
+                    // Newly captured item waiting for upload
+                    let bName = localImage.breed?.name ?? "Unknown Breed"
+                    if let _ = try? await uploadBreedMedia(breedImage: localImage, breedName: bName) {
+                        localImage.isSyncedToCloud = true
+                        uploadedLocalCount += 1
+                    }
+                }
+            }
+        }
+        
         do {
             try modelContext.save()
-            print("[iOS CloudKit] Successfully synced local database with \(downloadedCount) new items.")
+            self.backedUpItemCount = records.count + uploadedLocalCount
+            self.syncState = .synced(Date())
+            self.lastSyncDate = Date()
+            print("[iOS CloudKit] Sync completed: \(downloadedCount) downloaded, \(deletedLocalCount) deleted locally, \(uploadedLocalCount) uploaded.")
         } catch {
             print("[iOS CloudKit] Failed to save SwiftData after sync: \(error)")
         }

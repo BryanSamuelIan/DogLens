@@ -39,7 +39,37 @@ final class MacCloudKitService {
     var isAvailable: Bool = true
     var backedUpItemCount: Int = 0
 
+    // Persistent Pending Deletions Key
+    private let pendingDeletionsKey = "com.doglens.mac.pendingCloudDeletions"
+
     private init() {}
+
+    // MARK: - Pending Deletions Queue Helpers
+
+    private func getPendingDeletions() -> Set<String> {
+        let array = UserDefaults.standard.stringArray(forKey: pendingDeletionsKey) ?? []
+        return Set(array)
+    }
+
+    private func addPendingDeletions(_ names: [String]) {
+        var current = getPendingDeletions()
+        current.formUnion(names)
+        UserDefaults.standard.set(Array(current), forKey: pendingDeletionsKey)
+    }
+
+    private func removePendingDeletions(_ names: [String]) {
+        var current = getPendingDeletions()
+        current.subtract(names)
+        UserDefaults.standard.set(Array(current), forKey: pendingDeletionsKey)
+    }
+
+    /// Flushes any previously queued deletions that may have failed while offline
+    func flushPendingDeletions() async {
+        let pending = Array(getPendingDeletions())
+        guard !pending.isEmpty else { return }
+        print("[Mac CloudKit] Flushing \(pending.count) pending deletions from queue...")
+        await performCloudDeletion(recordNames: pending)
+    }
 
     func checkAccountStatus() async {
         do {
@@ -67,13 +97,16 @@ final class MacCloudKitService {
         }
     }
 
-    // MARK: - Sync All Records between iCloud and SwiftData (Two-Way Sync)
+    // MARK: - Sync All Records between iCloud and SwiftData (Two-Way Deletion & Upload Sync)
     func syncWithLocalDatabase(modelContext: ModelContext) async {
         await syncFromCloud(modelContext: modelContext)
     }
 
     func syncFromCloud(modelContext: ModelContext) async {
         syncStatus = .syncing
+
+        // 1. Flush any pending offline deletions first
+        await flushPendingDeletions()
 
         do {
             let predicate = NSPredicate(value: true)
@@ -99,6 +132,8 @@ final class MacCloudKitService {
             }
 
             var downloadedCount = 0
+            var deletedLocalCount = 0
+            var uploadedLocalCount = 0
 
             // Fetch existing images to prevent duplication
             let existingDescriptor = FetchDescriptor<BreedImage>()
@@ -115,7 +150,7 @@ final class MacCloudKitService {
 
             var cloudRecordIDs = Set<String>()
 
-            // 1. Download records from CloudKit that don't exist locally
+            // 2. Download records from CloudKit that don't exist locally
             for record in records {
                 let idString = (record["mediaId"] as? String)
                     ?? (record["localID"] as? String)
@@ -199,20 +234,38 @@ final class MacCloudKitService {
                     isVideo: isVideo,
                     detectionDate: detectionDate,
                     confidence: confidence,
-                    breed: breed
+                    breed: breed,
+                    isSyncedToCloud: true
                 )
                 modelContext.insert(newImage)
                 breed.images.append(newImage)
                 downloadedCount += 1
             }
 
-            // 2. Upload any local records that haven't been pushed to CloudKit yet
-            var uploadedLocalCount = 0
+            // 3. Reconcile local images:
+            //    - If isSyncedToCloud is true but missing from CloudKit -> It was deleted in CloudKit (delete locally).
+            //    - If isSyncedToCloud is false and missing from CloudKit -> It was created locally offline (upload to CloudKit).
             for localImage in existingImages {
-                if !cloudRecordIDs.contains(localImage.id.uuidString.lowercased()) {
-                    let bName = localImage.breed?.name ?? "Unknown Breed"
-                    await uploadBreedImage(localImage, breedName: bName)
-                    uploadedLocalCount += 1
+                let localKey = localImage.id.uuidString.lowercased()
+                if cloudRecordIDs.contains(localKey) {
+                    localImage.isSyncedToCloud = true
+                } else {
+                    if localImage.isSyncedToCloud {
+                        // Deleted remotely -> Delete locally
+                        if let breed = localImage.breed,
+                           let idx = breed.images.firstIndex(where: { $0.id == localImage.id }) {
+                            breed.images.remove(at: idx)
+                        }
+                        modelContext.delete(localImage)
+                        deletedLocalCount += 1
+                    } else {
+                        // Local pending upload
+                        let bName = localImage.breed?.name ?? "Unknown Breed"
+                        await uploadBreedImage(localImage, breedName: bName)
+                        if localImage.isSyncedToCloud {
+                            uploadedLocalCount += 1
+                        }
+                    }
                 }
             }
 
@@ -221,18 +274,14 @@ final class MacCloudKitService {
             self.isAvailable = true
 
             let statusMessage: String
-            if downloadedCount > 0 && uploadedLocalCount > 0 {
-                statusMessage = "Synced \(downloadedCount) down, \(uploadedLocalCount) up"
-            } else if downloadedCount > 0 {
-                statusMessage = "Synced \(downloadedCount) new items"
-            } else if uploadedLocalCount > 0 {
-                statusMessage = "Uploaded \(uploadedLocalCount) local items"
+            if downloadedCount > 0 || deletedLocalCount > 0 || uploadedLocalCount > 0 {
+                statusMessage = "Synced: +\(downloadedCount) / -\(deletedLocalCount) / ↑\(uploadedLocalCount)"
             } else {
                 statusMessage = "iCloud Up to Date"
             }
 
             syncStatus = .success(statusMessage)
-            print("CloudKit sync finished on Mac. Downloaded \(downloadedCount), Uploaded \(uploadedLocalCount), Total in cloud \(records.count).")
+            print("CloudKit sync finished on Mac: Downloaded \(downloadedCount), Deleted \(deletedLocalCount), Uploaded \(uploadedLocalCount), Total in cloud \(records.count).")
         } catch {
             print("CloudKit sync error on Mac: \(error)")
             syncStatus = .error(error.localizedDescription)
@@ -283,6 +332,7 @@ final class MacCloudKitService {
             }
 
             _ = try await privateDB.save(record)
+            breedImage.isSyncedToCloud = true
             self.backedUpItemCount += 1
             self.syncStatus = .success("Saved to iCloud")
             print("Successfully uploaded BreedMedia \(breedImage.id) to CloudKit from Mac")
@@ -298,28 +348,56 @@ final class MacCloudKitService {
     }
 
     // MARK: - Delete Cloud Media
+
+    /// Public entry point for deleting records from CloudKit on Mac
     func deleteCloudMedia(recordNames: [String]) async {
         guard !recordNames.isEmpty else { return }
+        addPendingDeletions(recordNames)
+        await performCloudDeletion(recordNames: recordNames)
+    }
+
+    private func performCloudDeletion(recordNames: [String]) async {
+        guard !recordNames.isEmpty else { return }
         let recordIDs = recordNames.map { CKRecord.ID(recordName: $0) }
+
+        var successfulDeletions: [String] = []
+
         do {
             let (_, deleteResults) = try await privateDB.modifyRecords(saving: [], deleting: recordIDs)
-            var deletedCount = 0
-            for (_, result) in deleteResults {
-                if case .success = result {
-                    deletedCount += 1
+            for (recID, result) in deleteResults {
+                switch result {
+                case .success:
+                    successfulDeletions.append(recID.recordName)
+                case .failure(let error):
+                    if let ckError = error as? CKError, ckError.code == .unknownItem {
+                        // Already gone from CloudKit
+                        successfulDeletions.append(recID.recordName)
+                    } else {
+                        print("Failed to delete record \(recID.recordName) on Mac: \(error)")
+                    }
                 }
             }
-            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
-            print("Successfully batch deleted \(deletedCount)/\(recordNames.count) records from CloudKit on Mac")
         } catch {
-            print("Mac CloudKit batch deletion error: \(error), falling back to individual deletes")
-            var deletedCount = 0
+            print("Mac CloudKit batch deletion error: \(error), falling back to individual deletes...")
             for id in recordIDs {
-                if (try? await privateDB.deleteRecord(withID: id)) != nil {
-                    deletedCount += 1
+                do {
+                    _ = try await privateDB.deleteRecord(withID: id)
+                    successfulDeletions.append(id.recordName)
+                } catch {
+                    if let ckError = error as? CKError, ckError.code == .unknownItem {
+                        // Already gone from CloudKit
+                        successfulDeletions.append(id.recordName)
+                    } else {
+                        print("Mac individual delete failed for \(id.recordName): \(error)")
+                    }
                 }
             }
-            self.backedUpItemCount = max(0, self.backedUpItemCount - deletedCount)
+        }
+
+        if !successfulDeletions.isEmpty {
+            removePendingDeletions(successfulDeletions)
+            self.backedUpItemCount = max(0, self.backedUpItemCount - successfulDeletions.count)
+            print("Successfully deleted \(successfulDeletions.count)/\(recordNames.count) records from CloudKit on Mac")
         }
     }
 
