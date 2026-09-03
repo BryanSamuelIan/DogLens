@@ -7,6 +7,7 @@ import SwiftUI
 
 struct MacDropOverlayView: View {
     let isTargeted: Bool
+    var scannerMode: ScannerMode = .photo
 
     var body: some View {
         ZStack {
@@ -19,16 +20,16 @@ struct MacDropOverlayView: View {
                 .padding(24)
 
             VStack(spacing: 16) {
-                Image(systemName: "photo.on.rectangle.angled")
+                Image(systemName: scannerMode == .video ? "film.stack.fill" : "photo.on.rectangle.angled")
                     .font(.system(size: 64))
                     .foregroundColor(.orange)
 
-                Text("Drop Image to Scan & Detect Dogs")
+                Text(scannerMode == .video ? "Drop Video to Scan & Detect Dogs" : "Drop Image to Scan & Detect Dogs")
                     .font(.title)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
 
-                Text("Supports JPG, PNG, and HEIC files")
+                Text(scannerMode == .video ? "Supports MP4, MOV, and M4V files" : "Supports JPG, PNG, HEIC, and Video files")
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.85))
             }

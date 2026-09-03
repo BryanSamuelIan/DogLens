@@ -3,7 +3,7 @@ import CoreGraphics
 
 // MARK: - Dog Multi-Object Tracker (IoU Tracker + Re-Entry Re-ID + Temporal Track Merging)
 
-final class DogTracker {
+final class MacDogTracker {
     private var nextTrackId: Int = 1
     private(set) var activeTracks: [TrackedDog] = []
     private(set) var allEncounteredTracks: [TrackedDog] = []
@@ -121,15 +121,15 @@ final class DogTracker {
         activeTracks.removeAll { $0.lostFrameCount > maxLostFrames }
         
         // 5. Return smoothed DetectionResult for currently visible dogs
-        return activeTracks.compactMap { track in
+        return activeTracks.compactMap { (track: TrackedDog) -> DetectionResult? in
             guard track.lastSeenFrame == frameIndex else { return nil }
             
             if let consensus = track.getConsensusBreed(baseThreshold: baseDetectionThreshold) {
                 let label = "Dog #\(track.id): \(consensus.breed)"
-                return DetectionResult(boundingBox: track.currentBox, label: label, confidence: consensus.confidence)
+                return DetectionResult(label: label, confidence: consensus.confidence, boundingBox: track.currentBox)
             } else {
                 let label = "Dog #\(track.id)"
-                return DetectionResult(boundingBox: track.currentBox, label: label, confidence: 0.0)
+                return DetectionResult(label: label, confidence: 0.0, boundingBox: track.currentBox)
             }
         }
     }

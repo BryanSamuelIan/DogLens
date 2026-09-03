@@ -6,29 +6,60 @@
 import SwiftUI
 
 struct MacScannerHeader: View {
-    @Binding var inputMode: InputMode
+    @Binding var scannerMode: ScannerMode
+    @Binding var inputSource: MediaInputSource
     @Bindable var cameraManager: MacCameraManager
     let onUploadFile: () -> Void
 
     var body: some View {
         HStack(spacing: 16) {
-            Picker("Mode", selection: $inputMode) {
-                ForEach(InputMode.allCases) { mode in
+            // Main Scanner Mode Picker (Photo / Video / Live)
+            Picker("Mode", selection: $scannerMode) {
+                ForEach(ScannerMode.allCases) { mode in
                     Label(mode.rawValue, systemImage: mode.icon).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 320)
+            .frame(width: 330)
             .tint(.orange)
 
-            Button(action: onUploadFile) {
-                Label("Upload from File…", systemImage: "square.and.arrow.up")
+            // Sub-source selector (Webcam / File) when not in Live mode
+            if scannerMode != .live {
+                Picker("Input", selection: $inputSource) {
+                    ForEach(MediaInputSource.allCases) { src in
+                        Label(src.rawValue, systemImage: src.icon).tag(src)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+                .tint(.orange)
+
+                Button(action: onUploadFile) {
+                    Label(
+                        scannerMode == .video ? "Upload Video…" : "Upload Photo…",
+                        systemImage: "square.and.arrow.up"
+                    )
+                }
+                .buttonStyle(.bordered)
+            } else {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 8, height: 8)
+                    Text("Real-time YOLO Active")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.ultraThinMaterial, in: Capsule())
             }
-            .buttonStyle(.bordered)
 
             Spacer()
 
-            if inputMode == .webcam && !cameraManager.availableDevices.isEmpty {
+            // Camera selector menu if camera is used
+            if (scannerMode == .live || inputSource == .camera) && !cameraManager.availableDevices.isEmpty {
                 cameraDeviceMenu
             }
         }

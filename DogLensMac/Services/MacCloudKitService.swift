@@ -97,12 +97,21 @@ final class MacCloudKitService {
         }
     }
 
+    private var isSyncing = false
+
     // MARK: - Sync All Records between iCloud and SwiftData (Two-Way Deletion & Upload Sync)
     func syncWithLocalDatabase(modelContext: ModelContext) async {
         await syncFromCloud(modelContext: modelContext)
     }
 
     func syncFromCloud(modelContext: ModelContext) async {
+        guard !isSyncing else {
+            print("[Mac CloudKit] Sync already in progress, skipping duplicate call.")
+            return
+        }
+        isSyncing = true
+        defer { isSyncing = false }
+
         syncStatus = .syncing
 
         // 1. Flush any pending offline deletions first
@@ -186,60 +195,62 @@ final class MacCloudKitService {
                     ?? record.creationDate
                     ?? Date()
 
-                var imageData = Data()
-                if let asset = record["imageAsset"] as? CKAsset,
-                   let fileURL = asset.fileURL,
-                   let data = try? Data(contentsOf: fileURL) {
-                    imageData = data
+                autoreleasepool {
+                    var imageData = Data()
+                    if let asset = record["imageAsset"] as? CKAsset,
+                       let fileURL = asset.fileURL,
+                       let data = try? Data(contentsOf: fileURL) {
+                        imageData = data
+                    }
+
+                    var annotatedImageData: Data? = nil
+                    if let asset = record["annotatedImageAsset"] as? CKAsset,
+                       let fileURL = asset.fileURL {
+                        annotatedImageData = try? Data(contentsOf: fileURL)
+                    }
+
+                    var videoData: Data? = nil
+                    if let asset = record["videoAsset"] as? CKAsset,
+                       let fileURL = asset.fileURL {
+                        videoData = try? Data(contentsOf: fileURL)
+                    }
+
+                    var annotatedVideoData: Data? = nil
+                    if let asset = record["annotatedVideoAsset"] as? CKAsset,
+                       let fileURL = asset.fileURL {
+                        annotatedVideoData = try? Data(contentsOf: fileURL)
+                    }
+
+                    guard !imageData.isEmpty else { return }
+
+                    // Find or create breed
+                    let breed: DogBreed
+                    let key = breedName.lowercased()
+                    if let existing = breedDict[key] {
+                        breed = existing
+                    } else {
+                        let newBreed = DogBreed(name: breedName)
+                        modelContext.insert(newBreed)
+                        breedDict[key] = newBreed
+                        breed = newBreed
+                    }
+
+                    let newImage = BreedImage(
+                        id: uuid,
+                        imageData: imageData,
+                        annotatedImageData: annotatedImageData,
+                        videoData: videoData,
+                        annotatedVideoData: annotatedVideoData,
+                        isVideo: isVideo,
+                        detectionDate: detectionDate,
+                        confidence: confidence,
+                        breed: breed,
+                        isSyncedToCloud: true
+                    )
+                    modelContext.insert(newImage)
+                    breed.images.append(newImage)
+                    downloadedCount += 1
                 }
-
-                var annotatedImageData: Data? = nil
-                if let asset = record["annotatedImageAsset"] as? CKAsset,
-                   let fileURL = asset.fileURL {
-                    annotatedImageData = try? Data(contentsOf: fileURL)
-                }
-
-                var videoData: Data? = nil
-                if let asset = record["videoAsset"] as? CKAsset,
-                   let fileURL = asset.fileURL {
-                    videoData = try? Data(contentsOf: fileURL)
-                }
-
-                var annotatedVideoData: Data? = nil
-                if let asset = record["annotatedVideoAsset"] as? CKAsset,
-                   let fileURL = asset.fileURL {
-                    annotatedVideoData = try? Data(contentsOf: fileURL)
-                }
-
-                guard !imageData.isEmpty else { continue }
-
-                // Find or create breed
-                let breed: DogBreed
-                let key = breedName.lowercased()
-                if let existing = breedDict[key] {
-                    breed = existing
-                } else {
-                    let newBreed = DogBreed(name: breedName)
-                    modelContext.insert(newBreed)
-                    breedDict[key] = newBreed
-                    breed = newBreed
-                }
-
-                let newImage = BreedImage(
-                    id: uuid,
-                    imageData: imageData,
-                    annotatedImageData: annotatedImageData,
-                    videoData: videoData,
-                    annotatedVideoData: annotatedVideoData,
-                    isVideo: isVideo,
-                    detectionDate: detectionDate,
-                    confidence: confidence,
-                    breed: breed,
-                    isSyncedToCloud: true
-                )
-                modelContext.insert(newImage)
-                breed.images.append(newImage)
-                downloadedCount += 1
             }
 
             // 3. Reconcile local images:
@@ -290,60 +301,71 @@ final class MacCloudKitService {
 
     // MARK: - Upload Item to iCloud
     func uploadBreedImage(_ breedImage: BreedImage, breedName: String) async {
+        self.syncStatus = .syncing
+        let recordID = CKRecord.ID(recordName: breedImage.id.uuidString)
+        let record = CKRecord(recordType: Self.recordType, recordID: recordID)
+
+        // Write both mediaId and localID for cross-compatibility
+        record["mediaId"] = breedImage.id.uuidString as CKRecordValue
+        record["localID"] = breedImage.id.uuidString as CKRecordValue
+        record["breedName"] = breedName as CKRecordValue
+        record["confidence"] = breedImage.confidence as CKRecordValue
+        record["isVideo"] = (breedImage.isVideo ? 1 : 0) as CKRecordValue
+        record["detectionDate"] = breedImage.detectionDate as CKRecordValue
+
+        let imgData = breedImage.imageData
+        let annData = breedImage.annotatedImageData
+        let vidData = breedImage.videoData
+        let annVidData = breedImage.annotatedVideoData
+
+        // Prepare temporary files on background thread to prevent UI stutter
+        let tempFiles = await Task.detached(priority: .userInitiated) { () -> [(key: String, url: URL)] in
+            var files: [(key: String, url: URL)] = []
+            func makeTemp(data: Data, ext: String) -> URL? {
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+                do {
+                    try data.write(to: tempURL)
+                    return tempURL
+                } catch {
+                    return nil
+                }
+            }
+
+            if let url = makeTemp(data: imgData, ext: "jpg") {
+                files.append(("imageAsset", url))
+            }
+            if let ann = annData, let url = makeTemp(data: ann, ext: "jpg") {
+                files.append(("annotatedImageAsset", url))
+            }
+            if let vid = vidData, let url = makeTemp(data: vid, ext: "mp4") {
+                files.append(("videoAsset", url))
+            }
+            if let annVid = annVidData, let url = makeTemp(data: annVid, ext: "mp4") {
+                files.append(("annotatedVideoAsset", url))
+            }
+            return files
+        }.value
+
+        for file in tempFiles {
+            record[file.key] = CKAsset(fileURL: file.url)
+        }
+
         do {
-            let recordID = CKRecord.ID(recordName: breedImage.id.uuidString)
-            let record = CKRecord(recordType: Self.recordType, recordID: recordID)
-
-            // Write both mediaId and localID for cross-compatibility
-            record["mediaId"] = breedImage.id.uuidString as CKRecordValue
-            record["localID"] = breedImage.id.uuidString as CKRecordValue
-            record["breedName"] = breedName as CKRecordValue
-            record["confidence"] = breedImage.confidence as CKRecordValue
-            record["isVideo"] = (breedImage.isVideo ? 1 : 0) as CKRecordValue
-            record["detectionDate"] = breedImage.detectionDate as CKRecordValue
-
-            var tempFiles: [URL] = []
-
-            // Save Original Image Asset
-            if let imgURL = createTempFile(data: breedImage.imageData, ext: "jpg") {
-                record["imageAsset"] = CKAsset(fileURL: imgURL)
-                tempFiles.append(imgURL)
-            }
-
-            // Save Annotated Image Asset
-            if let annotated = breedImage.annotatedImageData,
-               let annURL = createTempFile(data: annotated, ext: "jpg") {
-                record["annotatedImageAsset"] = CKAsset(fileURL: annURL)
-                tempFiles.append(annURL)
-            }
-
-            // Save Video Asset
-            if let vidData = breedImage.videoData,
-               let vidURL = createTempFile(data: vidData, ext: "mp4") {
-                record["videoAsset"] = CKAsset(fileURL: vidURL)
-                tempFiles.append(vidURL)
-            }
-
-            // Save Annotated Video Asset
-            if let annVidData = breedImage.annotatedVideoData,
-               let annVidURL = createTempFile(data: annVidData, ext: "mp4") {
-                record["annotatedVideoAsset"] = CKAsset(fileURL: annVidURL)
-                tempFiles.append(annVidURL)
-            }
-
             _ = try await privateDB.save(record)
             breedImage.isSyncedToCloud = true
             self.backedUpItemCount += 1
             self.syncStatus = .success("Saved to iCloud")
             print("Successfully uploaded BreedMedia \(breedImage.id) to CloudKit from Mac")
-
-            // Clean up temp files
-            for url in tempFiles {
-                try? FileManager.default.removeItem(at: url)
-            }
         } catch {
             print("Failed to upload to CloudKit from Mac: \(error)")
             self.syncStatus = .error(error.localizedDescription)
+        }
+
+        // Clean up temp files in background
+        Task.detached(priority: .background) {
+            for file in tempFiles {
+                try? FileManager.default.removeItem(at: file.url)
+            }
         }
     }
 
