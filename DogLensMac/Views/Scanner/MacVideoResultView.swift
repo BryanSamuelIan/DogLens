@@ -80,15 +80,19 @@ struct MacVideoResultView: View {
 
                         Spacer()
 
-                        if vm.isNewBreed(allBreeds: allBreeds) {
+                        if vm.isNewBreed {
                             HStack(spacing: 4) {
                                 Image(systemName: "sparkles")
                                     .font(.caption2)
+                                    .foregroundStyle(.orange)
                                 Text("New Breed!")
                                     .font(.caption)
                                     .fontWeight(.bold)
+                                    .foregroundStyle(.orange)
+                                Image(systemName: "sparkles")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
                             }
-                            .foregroundColor(.orange)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(Color.orange.opacity(0.12), in: Capsule())
@@ -127,25 +131,64 @@ struct MacVideoResultView: View {
 
                 // Action Buttons
                 VStack(spacing: 12) {
+                    // New Breed Discovery Indicator above save button
+                    if vm.isNewBreed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                            Text("New Breed Discovered!")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.orange)
+                            Image(systemName: "sparkles")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.15))
+                        .clipShape(Capsule())
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+
                     // Save to Breed Gallery (Only if any confidence >= 0.70)
                     if vm.allVideoDetections.values.contains(where: { $0 >= 0.70 }) {
                         Button(action: onSaveToGallery) {
-                            HStack {
-                                Image(systemName: "square.grid.2x2.fill")
-                                Text("Save Video to Breed Gallery")
-                                    .fontWeight(.semibold)
+                            HStack(spacing: 8) {
+                                if vm.isSavingToGallery {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(.white)
+                                    Text("Saving to Breed Gallery…")
+                                        .fontWeight(.semibold)
+                                } else {
+                                    if vm.isNewBreed {
+                                        Image(systemName: "star.fill")
+                                    } else {
+                                        Image(systemName: "square.grid.2x2.fill")
+                                    }
+                                    Text("Save Video to Breed Gallery")
+                                        .fontWeight(.semibold)
+                                }
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, minHeight: 38)
-                            .background(Color.orange)
+                            .background(
+                                vm.isNewBreed
+                                ? LinearGradient(colors: [.orange, .pink], startPoint: .leading, endPoint: .trailing)
+                                : LinearGradient(colors: [.orange, .orange], startPoint: .leading, endPoint: .trailing)
+                            )
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .shadow(color: vm.isNewBreed ? .orange.opacity(0.4) : .clear, radius: 6, x: 0, y: 3)
                         }
                         .buttonStyle(.plain)
+                        .disabled(vm.isSavingToGallery)
                     }
 
                     // Save to Photos
                     Button(action: onSaveToPhotos) {
-                        HStack {
+                        HStack(spacing: 8) {
                             if vm.isSavingToPhotos {
                                 ProgressView()
                                     .controlSize(.small)
@@ -165,13 +208,13 @@ struct MacVideoResultView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(vm.isSavingToPhotos)
+                    .disabled(vm.isSavingToPhotos || vm.isSavingToGallery)
 
                     // Save to File System
                     Button {
                         onSaveToFile(showOriginal)
                     } label: {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: "arrow.down.doc")
                             Text("Save Video to File…")
                                 .fontWeight(.medium)
@@ -186,13 +229,18 @@ struct MacVideoResultView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .disabled(vm.isSavingToGallery)
                 }
             }
             .frame(width: 340)
             .padding(24)
         }
         .onAppear {
+            vm.breeds = allBreeds
             setupPlayer()
+        }
+        .onChange(of: allBreeds) { _, newBreeds in
+            vm.breeds = newBreeds
         }
         .onDisappear {
             player?.pause()

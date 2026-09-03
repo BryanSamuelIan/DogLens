@@ -72,9 +72,6 @@ struct MacScannerView: View {
         .onDrop(of: [.image, .movie, .fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
-        .task {
-            await MacCloudKitService.shared.syncFromCloud(modelContext: modelContext)
-        }
         .onAppear {
             setupCamera()
         }
@@ -159,7 +156,9 @@ struct MacScannerView: View {
                 vm: vm,
                 allBreeds: allBreeds,
                 onSaveToGallery: {
-                    vm.saveToBreedGallery(modelContext: modelContext, allBreeds: allBreeds)
+                    Task {
+                        await vm.saveToBreedGallery(modelContext: modelContext, allBreeds: allBreeds)
+                    }
                 },
                 onSaveToFile: { showOriginal in
                     triggerSaveVideoToFile(vm: vm, showOriginal: showOriginal)

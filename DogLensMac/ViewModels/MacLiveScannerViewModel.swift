@@ -24,7 +24,7 @@ final class MacLiveScannerViewModel: ObservableObject {
         let now = Date()
         guard now.timeIntervalSince(lastInferenceTime) >= inferenceInterval else { return }
         guard !isProcessing else { return }
-        
+
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         isProcessing = true
         lastInferenceTime = now
@@ -33,19 +33,24 @@ final class MacLiveScannerViewModel: ObservableObject {
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let currentSize = CGSize(width: width, height: height)
 
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+        let image: NSImage? = autoreleasepool {
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+                return nil
+            }
+            let nsSize = NSSize(width: cgImage.width, height: cgImage.height)
+            return NSImage(cgImage: cgImage, size: nsSize)
+        }
+
+        guard let validImage = image else {
             isProcessing = false
             return
         }
 
-        let nsSize = NSSize(width: cgImage.width, height: cgImage.height)
-        let image = NSImage(cgImage: cgImage, size: nsSize)
-
         Task { @MainActor in
             defer { self.isProcessing = false }
             do {
-                let results = try await MacModelService.shared.detectDogs(in: image)
+                let results = try await MacModelService.shared.detectDogs(in: validImage)
                 self.detectionResults = results
                 self.frameSize = currentSize
                 self.isDetecting = true

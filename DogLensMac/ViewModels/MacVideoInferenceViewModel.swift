@@ -21,7 +21,9 @@ final class MacVideoInferenceViewModel: ObservableObject {
     @Published var showingSaveAlert = false
     @Published var saveMessage = ""
     @Published var isSavingToPhotos = false
+    @Published var isSavingToGallery = false
     @Published var trackedDogs: [TrackedDogSummary] = []
+    @Published var breeds: [DogBreed] = []
 
     // MARK: - Best Frame (for Breed Gallery Thumbnail)
     private(set) var bestAnnotatedFrame: NSImage?
@@ -33,17 +35,17 @@ final class MacVideoInferenceViewModel: ObservableObject {
     private let targetFPS: Double = 15.0
 
     // MARK: - All Detected Breeds Across Video (Breed Name -> Highest Confidence)
-    private(set) var allVideoDetections: [String: Double] = [:]
+    @Published private(set) var allVideoDetections: [String: Double] = [:]
 
     init(videoURL: URL) {
         self.sourceURL = videoURL
     }
 
-    // Returns true if ANY detected breed (with confidence >= 0.7) has never been saved to gallery before
-    func isNewBreed(allBreeds: [DogBreed]) -> Bool {
+    // Returns true if ANY detected breed (with confidence >= 0.70) has never been saved to gallery before
+    var isNewBreed: Bool {
         allVideoDetections.contains { name, conf in
-            guard conf >= 0.7 else { return false }
-            if let match = allBreeds.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            guard conf >= 0.70 else { return false }
+            if let match = breeds.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
                 return match.images.isEmpty
             }
             return true
@@ -127,6 +129,12 @@ final class MacVideoInferenceViewModel: ObservableObject {
             let trackedResults = tracker.processFrame(detections: rawResults, frameIndex: i)
             let annotated = MacModelService.shared.renderAnnotatedImage(image: frame, detections: trackedResults)
             annotatedFrames.append((annotated, time))
+
+            // Keep track of all raw detections
+            for raw in rawResults {
+                let existing = allVideoDetections[raw.label] ?? 0.0
+                allVideoDetections[raw.label] = max(existing, Double(raw.confidence))
+            }
 
             // Track highest confidence frame for gallery thumbnail
             if let top = rawResults.max(by: { $0.confidence < $1.confidence }), top.confidence > bestConf {
@@ -232,25 +240,40 @@ final class MacVideoInferenceViewModel: ObservableObject {
     }
 
     // MARK: - Save to Breed Gallery (Only Confidence >= 0.70)
-    func saveToBreedGallery(modelContext: ModelContext, allBreeds: [DogBreed]) {
-        guard let rawVideoData = try? Data(contentsOf: sourceURL) else {
-            saveMessage = "Failed to read original video data."
-            showingSaveAlert = true
-            return
-        }
+    func saveToBreedGallery(modelContext: ModelContext, allBreeds: [DogBreed]) async {
+        guard !isSavingToGallery else { return }
+        isSavingToGallery = true
+        defer { isSavingToGallery = false }
 
-        let annotatedVideoData = annotatedVideoURL.flatMap { try? Data(contentsOf: $0) }
+        let source = sourceURL
+        let annotated = annotatedVideoURL
+        let origThumb = bestOriginalFrame
+        let annThumb = bestAnnotatedFrame ?? bestOriginalFrame
 
-        guard let originalThumb = bestOriginalFrame,
-              let origThumbData = originalThumb.jpegData else {
+        guard let origThumbData = origThumb?.jpegData else {
             saveMessage = "No thumbnail available to save."
             showingSaveAlert = true
             return
         }
 
-        let annotatedThumbData = (bestAnnotatedFrame ?? originalThumb).jpegData
+        let annThumbData = annThumb?.jpegData
+
+        // Heavy video data disk reading offloaded to background task
+        let (rawVideoData, annotatedVideoData) = await Task.detached(priority: .userInitiated) { () -> (Data?, Data?) in
+            let raw = try? Data(contentsOf: source)
+            let ann = annotated.flatMap { try? Data(contentsOf: $0) }
+            return (raw, ann)
+        }.value
+
+        guard let validRawVideo = rawVideoData else {
+            saveMessage = "Failed to read original video data."
+            showingSaveAlert = true
+            return
+        }
 
         var savedCount = 0
+        var savedEntries: [(BreedImage, String)] = []
+
         for (breedName, highestConf) in allVideoDetections {
             guard highestConf >= 0.70 else { continue }
 
@@ -265,8 +288,8 @@ final class MacVideoInferenceViewModel: ObservableObject {
 
             let entry = BreedImage(
                 imageData: origThumbData,
-                annotatedImageData: annotatedThumbData,
-                videoData: rawVideoData,
+                annotatedImageData: annThumbData,
+                videoData: validRawVideo,
                 annotatedVideoData: annotatedVideoData,
                 isVideo: true,
                 detectionDate: Date(),
@@ -277,14 +300,7 @@ final class MacVideoInferenceViewModel: ObservableObject {
             modelContext.insert(entry)
             breed.images.append(entry)
             savedCount += 1
-
-            // iCloud background sync
-            let savedEntry = entry
-            let bName = breed.name
-            Task {
-                await MacCloudKitService.shared.uploadBreedImage(savedEntry, breedName: bName)
-                try? modelContext.save()
-            }
+            savedEntries.append((entry, breed.name))
         }
 
         do {
@@ -296,6 +312,14 @@ final class MacVideoInferenceViewModel: ObservableObject {
             saveMessage = "Failed to save to gallery: \(error.localizedDescription)"
         }
         showingSaveAlert = true
+
+        // Background CloudKit sync
+        for (item, bName) in savedEntries {
+            Task {
+                await MacCloudKitService.shared.uploadBreedImage(item, breedName: bName)
+                try? modelContext.save()
+            }
+        }
     }
 
     // MARK: - Save to Photos Library
