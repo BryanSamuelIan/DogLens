@@ -1,12 +1,7 @@
-//
-//  MacDogTracker.swift
-//  DogLensMac
-//
-
 import Foundation
 import CoreGraphics
 
-// MARK: - Dog Multi-Object Tracker (IoU Tracker + Temporal Track Merging)
+// MARK: - Dog Multi-Object Tracker (IoU Tracker + Re-Entry Re-ID + Temporal Track Merging)
 
 final class MacDogTracker {
     private var nextTrackId: Int = 1
@@ -14,20 +9,22 @@ final class MacDogTracker {
     private(set) var allEncounteredTracks: [TrackedDog] = []
     
     var iouThreshold: CGFloat = 0.25
-    var maxLostFrames: Int = 15       // ~1.0s at 15fps
+    var maxLostFrames: Int = 45       // ~3.0s at 15fps (tolerates brief occlusions & turns)
+    var maxReentryFrames: Int = 90    // ~6.0s at 15fps (re-identifies dog exiting & re-entering frame)
     var baseDetectionThreshold: Float = 0.30
     
-    init(iouThreshold: CGFloat = 0.25, maxLostFrames: Int = 15, baseDetectionThreshold: Float = 0.30) {
+    init(iouThreshold: CGFloat = 0.25, maxLostFrames: Int = 45, maxReentryFrames: Int = 90, baseDetectionThreshold: Float = 0.30) {
         self.iouThreshold = iouThreshold
         self.maxLostFrames = maxLostFrames
+        self.maxReentryFrames = maxReentryFrames
         self.baseDetectionThreshold = baseDetectionThreshold
     }
     
     /// Process a new frame's raw detections and return smoothed, ID-tagged detections
     func processFrame(detections: [DetectionResult], frameIndex: Int) -> [DetectionResult] {
-        let unmatchedDetections = detections
+        var unmatchedDetections = detections
         
-        // 1. Build list of potential matches (trackIndex, detIndex, iou)
+        // 1. Build list of potential matches with ACTIVE tracks (trackIndex, detIndex, iou)
         var candidates: [(trackIdx: Int, detIdx: Int, iou: CGFloat)] = []
         for (tIdx, track) in activeTracks.enumerated() {
             for (dIdx, det) in unmatchedDetections.enumerated() {
@@ -59,14 +56,52 @@ final class MacDogTracker {
             }
         }
         
-        // Increase lost counter for tracks that weren't matched in this frame
+        // Increase lost counter for active tracks that weren't matched in this frame
         for (tIdx, track) in activeTracks.enumerated() {
             if !matchedTrackIndices.contains(tIdx) {
                 track.lostFrameCount += 1
             }
         }
         
-        // 2. Create new tracks for detections that didn't match any existing track
+        // 2. Re-entry & Re-ID matching for unmatched detections:
+        // Check if detection belongs to a previously seen track of the same breed that left the frame
+        var reidentifiedTrackIds = Set<Int>()
+        
+        for (dIdx, det) in unmatchedDetections.enumerated() {
+            guard !matchedDetectionIndices.contains(dIdx) else { continue }
+            
+            // Find inactive tracks of the same breed that were seen within maxReentryFrames
+            let inactiveCandidates = allEncounteredTracks.filter { track in
+                guard track.lastSeenFrame < frameIndex else { return false }
+                guard !reidentifiedTrackIds.contains(track.id) else { return false }
+                guard (frameIndex - track.lastSeenFrame) <= maxReentryFrames else { return false }
+                
+                if let consensus = track.getConsensusBreed(baseThreshold: baseDetectionThreshold) {
+                    return consensus.breed.caseInsensitiveCompare(det.label) == .orderedSame
+                }
+                return false
+            }
+            
+            // Pick the candidate that was most recently seen
+            if let bestMatch = inactiveCandidates.max(by: { $0.lastSeenFrame < $1.lastSeenFrame }) {
+                bestMatch.update(
+                    box: det.boundingBox,
+                    frameIndex: frameIndex,
+                    breed: det.label,
+                    confidence: det.confidence
+                )
+                bestMatch.lostFrameCount = 0
+                
+                if !activeTracks.contains(where: { $0.id == bestMatch.id }) {
+                    activeTracks.append(bestMatch)
+                }
+                
+                reidentifiedTrackIds.insert(bestMatch.id)
+                matchedDetectionIndices.insert(dIdx)
+            }
+        }
+        
+        // 3. Create new tracks ONLY for detections that didn't match any active or inactive track
         for (dIdx, det) in unmatchedDetections.enumerated() {
             if !matchedDetectionIndices.contains(dIdx) {
                 let newTrack = TrackedDog(
@@ -82,11 +117,11 @@ final class MacDogTracker {
             }
         }
         
-        // 3. Prune tracks that have been lost for too long
+        // 4. Prune tracks that have been lost for too long from active list
         activeTracks.removeAll { $0.lostFrameCount > maxLostFrames }
         
-        // 4. Return smoothed DetectionResult for currently visible dogs
-        return activeTracks.compactMap { track in
+        // 5. Return smoothed DetectionResult for currently visible dogs
+        return activeTracks.compactMap { (track: TrackedDog) -> DetectionResult? in
             guard track.lastSeenFrame == frameIndex else { return nil }
             
             if let consensus = track.getConsensusBreed(baseThreshold: baseDetectionThreshold) {
@@ -120,7 +155,7 @@ final class MacDogTracker {
                 guard let existingBreed = existing.getConsensusBreed(baseThreshold: self.baseDetectionThreshold)?.breed else {
                     return false
                 }
-                return existingBreed == trackBreed && !existing.overlapsInTime(with: track)
+                return existingBreed.caseInsensitiveCompare(trackBreed) == .orderedSame && !existing.overlapsInTime(with: track)
             }) {
                 // Merge this track into the existing track
                 consolidated[matchIndex].merge(with: track)

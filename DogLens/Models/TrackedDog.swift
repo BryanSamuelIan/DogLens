@@ -39,7 +39,7 @@ final class TrackedDog: Identifiable {
         breedHistory[breed]?.append(confidence)
     }
     
-    /// Merges another temporally disjoint track of the same breed into this track
+    /// Merges another track of the same breed into this track
     func merge(with other: TrackedDog) {
         self.seenFrames.formUnion(other.seenFrames)
         self.totalFramesSeen = seenFrames.count
@@ -53,9 +53,11 @@ final class TrackedDog: Identifiable {
         }
     }
     
-    /// Checks if this track co-existed in any of the same video frames with another track
-    func overlapsInTime(with other: TrackedDog) -> Bool {
-        return !self.seenFrames.intersection(other.seenFrames).isEmpty
+    /// Checks if this track co-existed in more than `maxAllowedOverlapFrames` with another track.
+    /// Filters out transient 1-3 frame noise/flicker double-bounding-boxes.
+    func overlapsInTime(with other: TrackedDog, maxAllowedOverlapFrames: Int = 3) -> Bool {
+        let intersectionCount = self.seenFrames.intersection(other.seenFrames).count
+        return intersectionCount > maxAllowedOverlapFrames
     }
     
     /// Returns the consensus breed using temporal voting and peak confidence.

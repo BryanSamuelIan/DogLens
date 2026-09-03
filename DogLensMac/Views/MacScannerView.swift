@@ -55,6 +55,54 @@ struct MacScannerView: View {
             if isDropTargeted {
                 MacDropOverlayView(isTargeted: isDropTargeted, scannerMode: scannerMode)
             }
+
+            if showSavedAlert, let msg = savedAlertMessage {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: msg.contains("No detections") ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(msg.contains("No detections") ? .orange : .green)
+
+                        Text(msg)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+
+                        Spacer()
+
+                        Button {
+                            withAnimation {
+                                showSavedAlert = false
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(msg.contains("No detections") ? Color.orange.opacity(0.5) : Color.green.opacity(0.5), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 5)
+                    .padding(.top, 16)
+                    .padding(.horizontal, 24)
+
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: showSavedAlert)
+                .task {
+                    try? await Task.sleep(nanoseconds: 4_500_000_000)
+                    withAnimation {
+                        showSavedAlert = false
+                    }
+                }
+            }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -69,7 +117,7 @@ struct MacScannerView: View {
                 .help(scannerMode == .video ? "Upload and detect dog video from Mac files" : "Upload and detect dog photo from Mac files")
             }
         }
-        .onDrop(of: [.image, .movie, .fileURL], isTargeted: $isDropTargeted) { providers in
+        .onDrop(of: [.image, .movie, .fileURL, .item], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
         .onAppear {
@@ -83,11 +131,6 @@ struct MacScannerView: View {
         }
         .onChange(of: inputSource) { _, newSource in
             handleInputSourceChange(to: newSource)
-        }
-        .alert("Notice", isPresented: $showSavedAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(savedAlertMessage ?? "")
         }
     }
 
@@ -158,6 +201,12 @@ struct MacScannerView: View {
                 onSaveToGallery: {
                     Task {
                         await vm.saveToBreedGallery(modelContext: modelContext, allBreeds: allBreeds)
+                        DispatchQueue.main.async {
+                            self.savedAlertMessage = vm.saveMessage
+                            withAnimation {
+                                self.showSavedAlert = true
+                            }
+                        }
                     }
                 },
                 onSaveToFile: { showOriginal in
@@ -165,6 +214,12 @@ struct MacScannerView: View {
                 },
                 onSaveToPhotos: {
                     vm.saveToPhotos()
+                    DispatchQueue.main.async {
+                        self.savedAlertMessage = "Video successfully saved to Photos."
+                        withAnimation {
+                            self.showSavedAlert = true
+                        }
+                    }
                 },
                 onScanAnother: {
                     resetVideoScanState()
@@ -343,10 +398,14 @@ struct MacScannerView: View {
 
     private func processVideoURL(_ url: URL) {
         cameraManager.stopSession()
-        let vm = MacVideoInferenceViewModel(videoURL: url)
-        self.activeVideoVM = vm
-        Task {
-            await vm.runInference()
+        withAnimation {
+            self.scannerMode = .video
+            self.inputSource = .file
+            let vm = MacVideoInferenceViewModel(videoURL: url)
+            self.activeVideoVM = vm
+            Task {
+                await vm.runInference()
+            }
         }
     }
 
@@ -395,6 +454,22 @@ struct MacScannerView: View {
         }
     }
 
+    private func loadImageFromURL(_ url: URL) -> NSImage? {
+        let access = url.startAccessingSecurityScopedResource()
+        defer {
+            if access {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+            return img
+        }
+        if let img = NSImage(contentsOf: url) {
+            return img
+        }
+        return nil
+    }
+
     private func openFilePicker() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
@@ -416,21 +491,26 @@ struct MacScannerView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
 
-            if self.scannerMode == .video {
-                if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
-                    self.processVideoURL(safeURL)
-                }
-            } else {
-                let access = url.startAccessingSecurityScopedResource()
-                defer {
-                    if access {
-                        url.stopAccessingSecurityScopedResource()
+            let ext = url.pathExtension.lowercased()
+            let isVideoExt = ["mp4", "mov", "m4v", "avi", "mkv"].contains(ext) || self.scannerMode == .video
+
+            if isVideoExt {
+                let safeURL = self.copySecurityScopedURLToTemp(url: url)
+                DispatchQueue.main.async {
+                    if let target = safeURL {
+                        self.processVideoURL(target)
                     }
                 }
-                guard let data = try? Data(contentsOf: url),
-                      let image = NSImage(data: data) else { return }
-                Task { @MainActor in
-                    await self.runPhotoDetection(on: image)
+            } else {
+                let img = self.loadImageFromURL(url)
+                DispatchQueue.main.async {
+                    if let image = img {
+                        self.scannerMode = .photo
+                        self.inputSource = .file
+                        Task { @MainActor in
+                            await self.runPhotoDetection(on: image)
+                        }
+                    }
                 }
             }
         }
@@ -439,55 +519,66 @@ struct MacScannerView: View {
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
 
-        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+        // 1. Try loading as URL (File URL from Finder / Desktop / Downloads)
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) ||
+            provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) ||
+            provider.hasItemConformingToTypeIdentifier(UTType.item.identifier) {
+
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url = url else { return }
+                guard let url = url else {
+                    self.loadDroppedImageDirectly(provider: provider)
+                    return
+                }
+
                 let ext = url.pathExtension.lowercased()
                 let isVideoExt = ["mp4", "mov", "m4v", "avi", "mkv"].contains(ext)
 
-                DispatchQueue.main.async {
-                    if isVideoExt {
+                if isVideoExt {
+                    let safeURL = self.copySecurityScopedURLToTemp(url: url)
+                    DispatchQueue.main.async {
                         self.scannerMode = .video
-                        if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
-                            self.processVideoURL(safeURL)
+                        self.inputSource = .file
+                        if let target = safeURL {
+                            self.processVideoURL(target)
                         }
-                    } else {
-                        let access = url.startAccessingSecurityScopedResource()
-                        defer { if access { url.stopAccessingSecurityScopedResource() } }
-                        if let data = try? Data(contentsOf: url), let img = NSImage(data: data) {
+                    }
+                } else {
+                    let loadedImage = self.loadImageFromURL(url)
+                    DispatchQueue.main.async {
+                        if let img = loadedImage {
                             self.scannerMode = .photo
+                            self.inputSource = .file
                             Task { @MainActor in
                                 await self.runPhotoDetection(on: img)
                             }
+                        } else {
+                            self.loadDroppedImageDirectly(provider: provider)
                         }
-                    }
-                }
-            }
-            return true
-        } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url = url else { return }
-                DispatchQueue.main.async {
-                    self.scannerMode = .video
-                    if let safeURL = self.copySecurityScopedURLToTemp(url: url) {
-                        self.processVideoURL(safeURL)
-                    }
-                }
-            }
-            return true
-        } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            _ = provider.loadObject(ofClass: NSImage.self) { img, _ in
-                guard let img = img as? NSImage else { return }
-                DispatchQueue.main.async {
-                    self.scannerMode = .photo
-                    Task { @MainActor in
-                        await self.runPhotoDetection(on: img)
                     }
                 }
             }
             return true
         }
 
+        // 2. Direct Image Provider Fallback (e.g. dragged from Photos, Safari, Clipboard)
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            loadDroppedImageDirectly(provider: provider)
+            return true
+        }
+
         return false
+    }
+
+    private func loadDroppedImageDirectly(provider: NSItemProvider) {
+        _ = provider.loadObject(ofClass: NSImage.self) { img, _ in
+            guard let img = img as? NSImage else { return }
+            DispatchQueue.main.async {
+                self.scannerMode = .photo
+                self.inputSource = .file
+                Task { @MainActor in
+                    await self.runPhotoDetection(on: img)
+                }
+            }
+        }
     }
 }
