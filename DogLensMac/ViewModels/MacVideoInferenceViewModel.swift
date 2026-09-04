@@ -85,8 +85,7 @@ final class MacVideoInferenceViewModel: ObservableObject {
                           userInfo: [NSLocalizedDescriptionKey: "Invalid video duration."])
         }
 
-        // Limit processing duration to 20 seconds max to maintain high responsiveness
-        let totalSec = min(rawDurationSec, 20.0)
+        let totalSec = rawDurationSec
 
         // 1. Build timestamp array at 15 FPS
         let interval = 1.0 / targetFPS
