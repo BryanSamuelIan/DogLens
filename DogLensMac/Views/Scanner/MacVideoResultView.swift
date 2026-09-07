@@ -36,7 +36,7 @@ struct MacVideoResultView: View {
                 }
 
                 if let player = player {
-                    VideoPlayer(player: player)
+                    MacVideoPlayerView(player: player)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)

@@ -16,7 +16,7 @@ struct MacVideoPreviewView: View {
         VStack(spacing: 20) {
             // Video Player
             if let player = player {
-                VideoPlayer(player: player)
+                MacVideoPlayerView(player: player)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)

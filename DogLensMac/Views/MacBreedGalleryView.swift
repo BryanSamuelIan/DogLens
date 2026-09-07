@@ -343,37 +343,39 @@ struct MacBreedDetailSheet: View {
                                 let isSelected = selectedIDs.contains(item.id)
 
                                 ZStack(alignment: .topTrailing) {
-                                    ZStack(alignment: .bottomTrailing) {
-                                        Color(NSColor.controlBackgroundColor)
-                                        if let nsImg = NSImage(data: item.imageData) {
-                                            Image(nsImage: nsImg)
-                                                .resizable()
-                                                .scaledToFill()
-                                        }
-
-                                        if item.isVideo {
-                                            HStack(spacing: 3) {
-                                                Image(systemName: "video.fill")
-                                                    .font(.system(size: 8, weight: .bold))
+                                    Color(NSColor.controlBackgroundColor)
+                                        .aspectRatio(1, contentMode: .fit)
+                                        .overlay {
+                                            if let nsImg = NSImage(data: item.imageData) {
+                                                Image(nsImage: nsImg)
+                                                    .resizable()
+                                                    .scaledToFill()
                                             }
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 3)
-                                            .background(.black.opacity(0.65), in: Capsule())
-                                            .padding(6)
                                         }
-                                    }
-                                    .aspectRatio(1, contentMode: .fit)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .stroke(
-                                                isSelectionMode && isSelected
-                                                ? Color.orange
-                                                : Color.primary.opacity(0.08),
-                                                lineWidth: isSelectionMode && isSelected ? 3 : 1
-                                            )
-                                    )
+                                        .clipped()
+                                        .overlay(alignment: .bottomTrailing) {
+                                            if item.isVideo {
+                                                HStack(spacing: 3) {
+                                                    Image(systemName: "video.fill")
+                                                        .font(.system(size: 9, weight: .bold))
+                                                }
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 3.5)
+                                                .background(.black.opacity(0.65), in: Capsule())
+                                                .padding(6)
+                                            }
+                                        }
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .stroke(
+                                                    isSelectionMode && isSelected
+                                                    ? Color.orange
+                                                    : Color.primary.opacity(0.08),
+                                                    lineWidth: isSelectionMode && isSelected ? 3 : 1
+                                                )
+                                        )
 
                                     if isSelectionMode {
                                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -595,7 +597,7 @@ struct MacFullScreenMediaView: View {
 
                 if breedImage.isVideo {
                     if let player = player {
-                        VideoPlayer(player: player)
+                        MacVideoPlayerView(player: player)
                             .frame(minHeight: 400)
                             .padding(20)
                     } else {
