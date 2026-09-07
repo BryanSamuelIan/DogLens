@@ -152,10 +152,6 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
                     self.session.addOutput(self.photoOutput)
                 }
                 
-                if self.session.canAddOutput(self.movieOutput) {
-                    self.session.addOutput(self.movieOutput)
-                }
-                
                 self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
                 self.videoDataOutput.videoSettings = [
                     kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
@@ -188,6 +184,14 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
+            if self.session.outputs.contains(self.movieOutput) {
+                self.session.beginConfiguration()
+                self.session.removeOutput(self.movieOutput)
+                self.session.commitConfiguration()
+            }
             if self.session.isRunning {
                 self.session.stopRunning()
             }
@@ -238,6 +242,12 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
 
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
+            self.session.beginConfiguration()
+            if !self.session.outputs.contains(self.movieOutput) && self.session.canAddOutput(self.movieOutput) {
+                self.session.addOutput(self.movieOutput)
+            }
+            self.session.commitConfiguration()
+
             self.movieOutput.startRecording(to: tempURL, recordingDelegate: self)
             
             DispatchQueue.main.async {
@@ -259,7 +269,9 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            self.movieOutput.stopRecording()
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
         }
         
         DispatchQueue.main.async { [weak self] in
@@ -290,6 +302,15 @@ final class MacCameraManager: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
 
     // MARK: - AVCaptureFileOutputRecordingDelegate
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            if self.session.outputs.contains(self.movieOutput) {
+                self.session.beginConfiguration()
+                self.session.removeOutput(self.movieOutput)
+                self.session.commitConfiguration()
+            }
+        }
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = false
@@ -334,7 +355,7 @@ final class MacCameraPreviewNSView: NSView {
             layer.videoGravity = .resizeAspectFill
             self.layer?.addSublayer(layer)
             self.previewLayer = layer
-        } else {
+        } else if previewLayer?.session !== session {
             previewLayer?.session = session
         }
         CATransaction.begin()
@@ -343,12 +364,29 @@ final class MacCameraPreviewNSView: NSView {
         CATransaction.commit()
     }
 
+    func cleanup() {
+        previewLayer?.removeFromSuperlayer()
+        previewLayer?.session = nil
+        previewLayer = nil
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            cleanup()
+        }
+    }
+
     override func layout() {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         previewLayer?.frame = bounds
         CATransaction.commit()
+    }
+
+    deinit {
+        cleanup()
     }
 }
 
@@ -363,5 +401,9 @@ struct MacCameraPreviewView: NSViewRepresentable {
 
     func updateNSView(_ nsView: MacCameraPreviewNSView, context: Context) {
         nsView.setSession(session)
+    }
+
+    static func dismantleNSView(_ nsView: MacCameraPreviewNSView, coordinator: ()) {
+        nsView.cleanup()
     }
 }
